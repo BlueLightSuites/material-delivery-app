@@ -15,6 +15,7 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { signUp } from '../../services/firebase/authService';
+import { useAuth } from '../../context/AuthContext';
 
 type SignUpNavigationProp = StackNavigationProp<AuthStackParamList, 'SignUp'>;
 
@@ -33,6 +34,7 @@ interface FormErrors {
 type UserRole = 'contractor' | 'driver' | 'admin';
 
 const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
+  const { setUser } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -96,12 +98,12 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
         return;
       }
 
-      Alert.alert('Success', 'Account created successfully! Please sign in.', [
-        {
-          text: 'Continue',
-          onPress: () => navigation.navigate('SignIn'),
-        },
-      ]);
+      if (result.user) {
+        // Successfully signed up - save user to context
+        console.log('Signed up user:', result.user);
+        setUser(result.user);
+        // Navigation will happen automatically when useAuth hook detects user
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create account. Please try again.';
       Alert.alert('Sign Up Error', errorMessage);

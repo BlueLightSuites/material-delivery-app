@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { signIn } from '../../services/firebase/authService';
+import { useAuth } from '../../context/AuthContext';
 
 type AuthStackParamList = {
   SignIn: undefined;
@@ -33,6 +34,7 @@ interface FormErrors {
 }
 
 const SignIn: React.FC<SignInProps> = ({ navigation }) => {
+  const { setUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -81,14 +83,10 @@ const SignIn: React.FC<SignInProps> = ({ navigation }) => {
       }
 
       if (result.user) {
-        // Successfully signed in
-        // TODO: Navigate to main app based on user role
+        // Successfully signed in - save user to context
         console.log('Signed in user:', result.user);
-        Alert.alert('Success', `Welcome back, ${result.user.name}!`);
-        // Example: navigation.reset({
-        //   index: 0,
-        //   routes: [{ name: 'MainApp' }],
-        // });
+        setUser(result.user);
+        // Navigation will happen automatically when useAuth hook detects user
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to sign in. Please try again.';
