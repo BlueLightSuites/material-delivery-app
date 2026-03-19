@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useAuth } from '../../context/AuthContext';
+import { createDeliveryRequest } from '../../services/api/deliveryRequests';
 
 type NewRequestNavigationProp = StackNavigationProp<MainStackParamList, 'NewRequest'>;
 
@@ -53,6 +55,7 @@ const WEIGHT_UNITS = [
 ];
 
 const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
+  const { accessToken, user } = useAuth();
   const [currentStep, setCurrentStep] = useState<'location' | 'material' | 'vehicle' | 'review'>(
     'location'
   );
@@ -118,16 +121,51 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // TODO: Send request to backend
-      console.log('Submitting delivery request:', form);
-      Alert.alert('Success', 'Delivery request submitted successfully!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      console.log('handleSubmit: Auth context values:', { accessToken: !!accessToken, userId: user?.id });
+
+      if (!accessToken) {
+        Alert.alert('Authentication required', 'Please sign in again before submitting a request.');
+        setLoading(false);
+        return;
+      }
+
+      if (!user?.auth_id) {
+        Alert.alert('Error', 'User authentication ID missing. Please sign in again.');
+        setLoading(false);
+        return;
+      }
+
+      const payload = {
+        auth_id: user.auth_id,
+        pickup_address: form.pickupAddress,
+        dropoff_address: form.dropoffAddress,
+        material_category: form.materialCategory,
+        material_weight: Number(form.materialWeight) || 0,
+        material_unit: form.materialUnit,
+        requires_trailer: form.requiresTrailer,
+        notes: form.additionalNotes,
+      };
+
+      console.log('handleSubmit: Submitting delivery request payload:', payload);
+
+      const created = await createDeliveryRequest(accessToken, payload);
+
+      console.log('handleSubmit: Create response:', created);
+
+      if (created) {
+        Alert.alert('Success', 'Delivery request submitted successfully!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('RequestList'),
+          },
+        ]);
+      } else {
+        Alert.alert('Error', 'Failed to submit request. Please check your connection and try again.');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit request. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      console.error('handleSubmit: Error caught:', errorMessage);
+      Alert.alert('Error', `Failed to submit request: ${errorMessage}`);
     } finally {
       setLoading(false);
     }

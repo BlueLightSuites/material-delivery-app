@@ -123,6 +123,7 @@ export interface SignInData {
 export interface AuthResponse {
   user: User | null;
   error: string | null;
+  accessToken?: string | null;
 }
 
 /**
@@ -166,6 +167,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
 
     const user: User = {
       id: authUser.id,
+      auth_id: authUser.id,
       email: data.email,
       name: data.name,
       role: data.role,
@@ -174,6 +176,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
     return {
       user,
       error: null,
+      accessToken: accessToken || null,
     };
   } catch (error) {
     console.error('Sign up error details:', error);
@@ -244,6 +247,7 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
         return {
           user: userData as User,
           error: null,
+          accessToken: accessToken || null,
         };
       } else {
         console.log('No user profile found, creating one...');
@@ -268,11 +272,13 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
     return {
       user: {
         id: authUser.id,
+        auth_id: authUser.id,
         email: authUser.email,
         name: authUser.user_metadata?.name || '',
         role: authUser.user_metadata?.role || 'driver',
       },
       error: null,
+      accessToken: accessToken || null,
     };
   } catch (error) {
     console.error('Sign in error details:', error);

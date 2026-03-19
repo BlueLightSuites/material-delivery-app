@@ -35,6 +35,7 @@ interface FormErrors {
 
 const SignIn: React.FC<SignInProps> = ({ navigation }) => {
   const { setUser } = useAuth();
+  const { setAccessToken } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -86,6 +87,9 @@ const SignIn: React.FC<SignInProps> = ({ navigation }) => {
         // Successfully signed in - save user to context
         console.log('Signed in user:', result.user);
         setUser(result.user);
+        if (result.accessToken) {
+          setAccessToken(result.accessToken);
+        }
         // Navigation will happen automatically when useAuth hook detects user
       }
     } catch (error) {

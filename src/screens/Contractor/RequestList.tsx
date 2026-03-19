@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,9 +8,14 @@ import {
   TouchableOpacity,
   FlatList,
   Dimensions,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useAuth } from '../../context/AuthContext';
+import { getDeliveryRequests, DeliveryRequest as DBDeliveryRequest } from '../../services/api/deliveryRequests';
 
 type RequestListNavigationProp = StackNavigationProp<MainStackParamList, 'RequestList'>;
 
@@ -18,36 +23,54 @@ interface RequestListProps {
   navigation: RequestListNavigationProp;
 }
 
-interface DeliveryRequest {
-  id: string;
-  material: string;
-  location: string;
-  status: 'pending' | 'assigned' | 'in_transit' | 'completed';
-  createdAt: string;
-  driverName?: string;
-}
-
-const MOCK_REQUESTS: DeliveryRequest[] = [
-  {
-    id: '1',
-    material: 'Lumber',
-    location: '123 Oak St, Springfield',
-    status: 'assigned',
-    createdAt: 'Today',
-    driverName: 'John Smith',
-  },
-  {
-    id: '2',
-    material: 'Drywall',
-    location: '456 Pine Ave, Springfield',
-    status: 'pending',
-    createdAt: 'Yesterday',
-  },
-];
-
 const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
+  const { accessToken, user } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'assigned' | 'completed'>(
     'all'
+  );
+  const [requests, setRequests] = useState<DBDeliveryRequest[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch requests from database
+  const fetchRequests = async () => {
+    if (!accessToken || !user?.auth_id) {
+      console.log('fetchRequests: Missing auth data');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('fetchRequests: Fetching for user:', user.auth_id);
+      
+      const filter = `auth_id=eq.${user.auth_id}`;
+      const data = await getDeliveryRequests(accessToken, filter);
+      
+      console.log('fetchRequests: Received', data.length, 'requests');
+      setRequests(data);
+    } catch (error) {
+      console.error('fetchRequests: Error fetching requests:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchRequests();
+    setRefreshing(false);
+  };
+
+  // Fetch requests when component mounts and when auth changes
+  useEffect(() => {
+    fetchRequests();
+  }, [accessToken, user?.auth_id]);
+
+  // Also refresh when returning to this screen
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchRequests();
+    }, [accessToken, user?.auth_id])
   );
 
   const getStatusColor = (
@@ -84,54 +107,65 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
     }
   };
 
-  const filteredRequests = MOCK_REQUESTS.filter((req) => {
+  const filteredRequests = requests.filter((req) => {
     if (activeTab === 'all') return true;
     return req.status === activeTab;
   });
 
-  const renderRequestCard = ({ item }: { item: DeliveryRequest }) => (
+  const renderRequestCard = ({ item }: { item: DBDeliveryRequest }) => (
     <TouchableOpacity
       style={styles.requestCard}
       onPress={() => navigation.navigate('Tracking', { requestId: item.id })}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleSection}>
-          <Text style={styles.requestMaterial}>{item.material}</Text>
+          <Text style={styles.requestMaterial}>{item.material_category}</Text>
           <View
             style={[
               styles.statusBadge,
-              { backgroundColor: getStatusColor(item.status) + '20' },
+              { backgroundColor: getStatusColor(item.status as any) + '20' },
             ]}
           >
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: getStatusColor(item.status) },
+                { backgroundColor: getStatusColor(item.status as any) },
               ]}
             />
             <Text
               style={[
                 styles.statusText,
-                { color: getStatusColor(item.status) },
+                { color: getStatusColor(item.status as any) },
               ]}
             >
-              {getStatusLabel(item.status)}
+              {getStatusLabel(item.status as any)}
             </Text>
           </View>
         </View>
-        <Text style={styles.cardDate}>{item.createdAt}</Text>
+        <Text style={styles.cardDate}>
+          {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown'}
+        </Text>
       </View>
 
       <View style={styles.cardBody}>
         <View style={styles.locationRow}>
           <Text style={styles.locationIcon}>📍</Text>
-          <Text style={styles.locationText}>{item.location}</Text>
+          <Text style={styles.locationText} numberOfLines={1}>
+            {item.pickup_address}
+          </Text>
         </View>
 
-        {item.driverName && (
+        <View style={styles.locationRow}>
+          <Text style={styles.locationIcon}>🎯</Text>
+          <Text style={styles.locationText} numberOfLines={1}>
+            {item.dropoff_address}
+          </Text>
+        </View>
+
+        {item.assigned_driver_id && (
           <View style={styles.driverRow}>
             <Text style={styles.driverIcon}>👤</Text>
-            <Text style={styles.driverText}>Driver: {item.driverName}</Text>
+            <Text style={styles.driverText}>Driver Assigned</Text>
           </View>
         )}
       </View>
@@ -142,9 +176,9 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const pendingCount = MOCK_REQUESTS.filter((r) => r.status === 'pending').length;
-  const assignedCount = MOCK_REQUESTS.filter((r) => r.status === 'assigned').length;
-  const completedCount = MOCK_REQUESTS.filter((r) => r.status === 'completed').length;
+  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const assignedCount = requests.filter((r) => r.status === 'assigned').length;
+  const completedCount = requests.filter((r) => r.status === 'completed').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -217,11 +251,16 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         </View>
 
         {/* Requests List */}
-        {filteredRequests.length > 0 ? (
+        {loading && filteredRequests.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0066CC" />
+            <Text style={styles.loadingText}>Loading requests...</Text>
+          </View>
+        ) : filteredRequests.length > 0 ? (
           <View style={styles.requestsList}>
             <FlatList
               data={filteredRequests}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.id || ''}
               renderItem={renderRequestCard}
               scrollEnabled={false}
             />
@@ -288,6 +327,17 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#999999',
   },
   header: {
     paddingHorizontal: 20,

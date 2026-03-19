@@ -35,6 +35,7 @@ type UserRole = 'contractor' | 'driver' | 'admin';
 
 const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
   const { setUser } = useAuth();
+  const { setAccessToken } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -102,6 +103,9 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
         // Successfully signed up - save user to context
         console.log('Signed up user:', result.user);
         setUser(result.user);
+        if (result.accessToken) {
+          setAccessToken(result.accessToken);
+        }
         // Navigation will happen automatically when useAuth hook detects user
       }
     } catch (error) {

@@ -6,6 +6,8 @@ interface AuthContextType {
   setUser: (user: User | null) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  accessToken: string | null;
+  setAccessToken: (token: string | null) => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,9 +19,12 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   return (
-    <AuthContext.Provider value={{ user, setUser, isLoading, setIsLoading }}>
+    <AuthContext.Provider
+      value={{ user, setUser, isLoading, setIsLoading, accessToken, setAccessToken }}
+    >
       {children}
     </AuthContext.Provider>
   );
