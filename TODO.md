@@ -58,10 +58,12 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 7. Session persistence ([#7](https://github.com/BlueLightSuites/material-delivery-app/issues/7))
 
-- **Status:** Not started
-- `AuthContext` (`src/context/AuthContext.tsx`) is in-memory only — force-quitting the app logs the user out every time, which will read as "broken" to any real user.
-- Add `expo-secure-store`, persist `accessToken` + minimal user info, restore on launch, and handle an expired/invalid token by falling back to the sign-in screen.
-- Supabase access tokens are short-lived — this also needs a refresh-token flow (Supabase issues a `refresh_token` alongside `access_token`; currently discarded entirely in `authService.ts`).
+- **Status:** Done
+- Added `expo-secure-store` (linked natively — `pod install` run, `EXSecureStore` in `ios/Podfile.lock`).
+- `src/services/auth/sessionService.ts` — save/load/clear a session (`user`, `accessToken`, `refreshToken`) in the Keychain/EncryptedSharedPreferences.
+- `authService.ts` now captures `refresh_token` from sign up/sign in (previously discarded entirely) and exposes a new `refreshSession()` that exchanges it for a fresh access token — Supabase rotates the refresh token on each use, so callers must persist the new one each time, not just the new access token.
+- `AuthContext` restores the session on launch: loads the stored session, immediately calls `refreshSession()` (simpler and more robust than decoding the JWT client-side to check expiry), and either restores `user`/`accessToken` on success or clears the stored session and falls back to sign-in on failure. `App.tsx` shows a loading spinner while this runs so launch doesn't flash the sign-in screen for an already-logged-in user.
+- `SignIn.tsx`/`SignUp.tsx` now call a new `login()` context method that sets state and persists in one step; `Profile.tsx`'s logout now calls `logout()`, which clears both.
 
 ---
 
@@ -108,4 +110,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1, 2, and 6 (driver job feed, accept a job, `users` migration) are done in code. **None of the three SQL migrations in `sql/` are confirmed applied to the live Supabase project** — that needs to happen before any of this works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next: item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once assign actually works live.
+Items 1, 2, 6, and 7 are done in code — driver job feed, accept a job, `users` migration, and session persistence. **None of the three SQL migrations in `sql/` are confirmed applied to the live Supabase project** — that needs to happen before any of the matching/accept work actually works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next up: item 3 (location capture) and item 4 (driver-side job detail/active job), which unblock item 5 (real tracking screen).

@@ -3,7 +3,7 @@
 **Last verified against code:** 2026-08-25
 **Purpose:** ground-truth snapshot of what's actually implemented, checked directly against `src/` — not a plan, not a wishlist. See [TODO.md](./TODO.md) for what's left and in what order.
 
-This app is meant to become an Uber-like marketplace for construction material delivery: contractors post delivery requests, drivers see and accept nearby jobs, both sides track the delivery live, and money changes hands at the end. Today it has a working **request intake pipeline** (contractor signs up, submits a request, sees it in a list) but **no matching, dispatch, driver-side, tracking, or payment functionality** — those are the pieces that make it "Uber-like," and they don't exist yet, not even as a manual/admin-assisted process.
+This app is meant to become an Uber-like marketplace for construction material delivery: contractors post delivery requests, drivers see and accept nearby jobs, both sides track the delivery live, and money changes hands at the end. The core marketplace loop now exists in code — a driver can see a pending request and accept it, atomically, with a real database-level guard against two drivers claiming the same job — but it hasn't been exercised against the live Supabase project yet (the migrations that make it possible haven't been confirmed applied), and there's still **no live tracking, no way to advance/complete a job after accepting it, and no payment functionality**.
 
 ---
 
@@ -15,7 +15,7 @@ This app is meant to become an Uber-like marketplace for construction material d
 - **View my requests** (`src/screens/Contractor/RequestList.tsx`) — fetches the contractor's own requests from Supabase, filters by status, pull-to-refresh. Also fully wired, not mocked (older docs in this repo say otherwise — see "Docs vs. reality" below).
 - **Driver job feed + accept** (`src/screens/Driver/JobsNearby.tsx`) — lists all `delivery_requests` with `status = 'pending'`, pull-to-refresh, refetches on focus. Each job has an "Accept" button calling the `accept_delivery_request` RPC (`sql/enable_driver_job_matching.sql`), which atomically assigns the driver only if the job is still pending; a job already taken by another driver shows an alert and refetches instead of erroring. No distance/radius filtering yet (no coordinates captured on requests — see gaps below). Tapping "View Details" goes to `JobDetail`, which is still a placeholder — there's no way yet to see or advance a job after accepting it.
   - **Requires the migration to actually be applied** to the live Supabase project — see Backend/infra gaps below. Until then this UI will look broken (empty feed, or Accept silently failing) even though the code is correct.
-- **Logout** — clears in-memory auth state (see session caveat below).
+- **Session persistence** (`src/context/AuthContext.tsx`, `src/services/auth/sessionService.ts`) — `user`/`accessToken`/`refreshToken` are persisted via `expo-secure-store` on login and restored on launch (refreshing the access token first). Logout clears both context state and the stored session.
 
 ## What exists as UI shell only ("Coming soon")
 
@@ -42,8 +42,6 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 ## Gaps that block basic usability, not just "nice to have"
 
-- **No session persistence.** `AuthContext` (`src/context/AuthContext.tsx`) holds `user` and `accessToken` in plain `useState`. Force-quit the app and you're logged out — every session starts at the sign-in screen. No `expo-secure-store` or equivalent is installed.
-- **No token refresh.** The Supabase access token is short-lived; nothing refreshes it, so a session left open will start silently failing requests.
 - **Accept/dispatch mechanism exists in code, not yet live.** The accept flow (job feed → Accept → `accept_delivery_request` RPC) is implemented, but the SQL migration that creates the RPC and the supporting RLS policies hasn't been applied to the live Supabase project yet — see Backend/infra gaps below. Once applied, this closes the core marketplace loop.
 - **No geolocation.** `expo-location` isn't a dependency. No permission strings are declared in `app.json` for iOS/Android. Pickup/dropoff are free-text addresses only — `pickup_lat/lng` and `dropoff_lat/lng` columns exist in the `delivery_requests` table but are never populated by the client.
 - **No live tracking.** Given no geolocation and an empty `Tracking.tsx`, there's no way for a contractor to see where their delivery is.
