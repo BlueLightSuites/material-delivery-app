@@ -21,7 +21,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ navigation }) => {
-  const { user, setUser } = useAuth();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
@@ -38,8 +38,8 @@ const Profile: React.FC<ProfileProps> = ({ navigation }) => {
         onPress: async () => {
           setLoading(true);
           try {
-            // Clear user from context
-            setUser(null);
+            // Clears context state and the persisted session together.
+            await logout();
             // Navigation will automatically switch to AuthNavigator
           } catch (error) {
             Alert.alert('Error', 'Failed to logout. Please try again.');

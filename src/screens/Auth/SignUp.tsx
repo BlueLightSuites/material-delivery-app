@@ -34,8 +34,7 @@ interface FormErrors {
 type UserRole = 'contractor' | 'driver' | 'admin';
 
 const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
-  const { setUser } = useAuth();
-  const { setAccessToken } = useAuth();
+  const { setUser, setAccessToken, login } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -100,11 +99,18 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
       }
 
       if (result.user) {
-        // Successfully signed up - save user to context
         console.log('Signed up user:', result.user);
-        setUser(result.user);
-        if (result.accessToken) {
-          setAccessToken(result.accessToken);
+
+        if (result.accessToken && result.refreshToken) {
+          // Persist the session so the user stays logged in across restarts.
+          await login(result.user, result.accessToken, result.refreshToken);
+        } else {
+          // Missing a refresh token (shouldn't normally happen) - still log
+          // the user in for this session, it just won't survive a restart.
+          setUser(result.user);
+          if (result.accessToken) {
+            setAccessToken(result.accessToken);
+          }
         }
         // Navigation will happen automatically when useAuth hook detects user
       }

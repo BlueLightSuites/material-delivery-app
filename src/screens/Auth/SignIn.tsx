@@ -34,8 +34,7 @@ interface FormErrors {
 }
 
 const SignIn: React.FC<SignInProps> = ({ navigation }) => {
-  const { setUser } = useAuth();
-  const { setAccessToken } = useAuth();
+  const { setUser, setAccessToken, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -84,11 +83,18 @@ const SignIn: React.FC<SignInProps> = ({ navigation }) => {
       }
 
       if (result.user) {
-        // Successfully signed in - save user to context
         console.log('Signed in user:', result.user);
-        setUser(result.user);
-        if (result.accessToken) {
-          setAccessToken(result.accessToken);
+
+        if (result.accessToken && result.refreshToken) {
+          // Persist the session so the user stays logged in across restarts.
+          await login(result.user, result.accessToken, result.refreshToken);
+        } else {
+          // Missing a refresh token (shouldn't normally happen) - still log
+          // the user in for this session, it just won't survive a restart.
+          setUser(result.user);
+          if (result.accessToken) {
+            setAccessToken(result.accessToken);
+          }
         }
         // Navigation will happen automatically when useAuth hook detects user
       }

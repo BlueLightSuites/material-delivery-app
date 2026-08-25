@@ -124,6 +124,13 @@ export interface AuthResponse {
   user: User | null;
   error: string | null;
   accessToken?: string | null;
+  refreshToken?: string | null;
+}
+
+export interface RefreshResponse {
+  accessToken: string | null;
+  refreshToken: string | null;
+  error: string | null;
 }
 
 /**
@@ -153,8 +160,9 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
 
     // Create user profile in users table
     const accessToken = response.data.access_token;
+    const refreshToken = response.data.refresh_token;
     console.log('Starting profile creation with access token:', accessToken.substring(0, 20) + '...');
-    
+
     await createOrUpdateUserProfile(
       authUser.id,
       data.email,
@@ -162,7 +170,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
       data.role,
       accessToken
     );
-    
+
     console.log('Profile creation completed');
 
     const user: User = {
@@ -177,6 +185,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
       user,
       error: null,
       accessToken: accessToken || null,
+      refreshToken: refreshToken || null,
     };
   } catch (error) {
     console.error('Sign up error details:', error);
@@ -217,6 +226,7 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
 
     const authUser = response.data.user;
     const accessToken = response.data.access_token;
+    const refreshToken = response.data.refresh_token;
 
     if (!authUser) {
       console.error('No user returned from sign in. Full response:', response.data);
@@ -248,6 +258,7 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
           user: userData as User,
           error: null,
           accessToken: accessToken || null,
+          refreshToken: refreshToken || null,
         };
       } else {
         console.log('No user profile found, creating one...');
@@ -279,6 +290,7 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
       },
       error: null,
       accessToken: accessToken || null,
+      refreshToken: refreshToken || null,
     };
   } catch (error) {
     console.error('Sign in error details:', error);
@@ -304,6 +316,41 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
 }
 
 /**
+ * Exchange a refresh token for a new access token. Used on app launch to
+ * restore a persisted session, and can be called again whenever a request
+ * starts failing with an expired-token error.
+ *
+ * Supabase rotates the refresh token on each use, so callers must persist
+ * the new refreshToken from the response, not just the new accessToken -
+ * reusing a stale refresh token will fail.
+ */
+export async function refreshSession(refreshToken: string): Promise<RefreshResponse> {
+  try {
+    const response = await retryWithBackoff(async () => {
+      return await axiosInstance.post('/token?grant_type=refresh_token', {
+        refresh_token: refreshToken,
+      });
+    });
+
+    return {
+      accessToken: response.data.access_token || null,
+      refreshToken: response.data.refresh_token || null,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Refresh session error:', error);
+    let errorMessage = 'Session expired. Please sign in again.';
+
+    if (axios.isAxiosError(error)) {
+      errorMessage =
+        error.response?.data?.error_description || error.response?.data?.msg || errorMessage;
+    }
+
+    return { accessToken: null, refreshToken: null, error: errorMessage };
+  }
+}
+
+/**
  * Sign out the current user
  */
 export async function signOut(): Promise<{ error: string | null }> {
@@ -313,20 +360,6 @@ export async function signOut(): Promise<{ error: string | null }> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
     return { error: errorMessage };
-  }
-}
-
-/**
- * Get the current authenticated user
- */
-export async function getCurrentUser(): Promise<User | null> {
-  try {
-    // This would require storing the user in local storage or app state
-    // For now, return null
-    return null;
-  } catch (error) {
-    console.error('Error getting current user:', error);
-    return null;
   }
 }
 
