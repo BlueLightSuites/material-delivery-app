@@ -26,6 +26,7 @@ DerivedData
 *.ipa
 *.xcuserstate
 project.xcworkspace
+/ios/*.xcworkspace
 
 # Android/IntelliJ
 #
