@@ -9,12 +9,17 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
-import { getDeliveryRequests, DeliveryRequest } from '../../services/api/deliveryRequests';
+import {
+  getDeliveryRequests,
+  acceptDeliveryRequest,
+  DeliveryRequest,
+} from '../../services/api/deliveryRequests';
 
 type JobsNearbyNavigationProp = StackNavigationProp<MainStackParamList, 'JobsNearby'>;
 
@@ -27,6 +32,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   const [jobs, setJobs] = useState<DeliveryRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
   const fetchJobs = async () => {
     if (!accessToken) {
@@ -56,11 +62,33 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
     }, [accessToken])
   );
 
+  const handleAccept = async (jobId: string) => {
+    if (!accessToken) {
+      Alert.alert('Authentication required', 'Please sign in again before accepting a job.');
+      return;
+    }
+
+    setAcceptingId(jobId);
+    try {
+      const accepted = await acceptDeliveryRequest(accessToken, jobId);
+
+      if (accepted) {
+        setJobs((prev) => prev.filter((job) => job.id !== jobId));
+        Alert.alert('Job Accepted', "You're now assigned to this delivery.");
+      } else {
+        Alert.alert(
+          'Already Taken',
+          'Another driver accepted this job first. Refreshing the list.'
+        );
+        fetchJobs();
+      }
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
   const renderJobCard = ({ item }: { item: DeliveryRequest }) => (
-    <TouchableOpacity
-      style={styles.jobCard}
-      onPress={() => item.id && navigation.navigate('JobDetail', { jobId: item.id })}
-    >
+    <View style={styles.jobCard}>
       <View style={styles.cardHeader}>
         <Text style={styles.materialText}>{item.material_category}</Text>
         <Text style={styles.quantityText}>
@@ -89,9 +117,26 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
       </View>
 
       <View style={styles.cardFooter}>
-        <Text style={styles.viewDetailsText}>View Details →</Text>
+        <TouchableOpacity
+          style={styles.detailsButton}
+          onPress={() => item.id && navigation.navigate('JobDetail', { jobId: item.id })}
+        >
+          <Text style={styles.viewDetailsText}>View Details →</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.acceptButton}
+          onPress={() => item.id && handleAccept(item.id)}
+          disabled={acceptingId === item.id}
+        >
+          {acceptingId === item.id ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.acceptButtonText}>Accept</Text>
+          )}
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -232,16 +277,36 @@ const styles = StyleSheet.create({
     color: '#E65100',
   },
   cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
     marginTop: 12,
+    gap: 12,
+  },
+  detailsButton: {
+    flex: 1,
   },
   viewDetailsText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#0066CC',
+  },
+  acceptButton: {
+    backgroundColor: '#0066CC',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   emptyState: {
     alignItems: 'center',
