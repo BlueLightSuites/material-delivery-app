@@ -1,461 +1,110 @@
-# Material Delivery App - TODO List
+# Roadmap to a usable Uber-like delivery platform
 
-## 🔴 Critical Issues (Must Fix)
+**Last updated:** 2026-08-25
+Every item below is tracked as a GitHub issue in [BlueLightSuites/material-delivery-app](https://github.com/BlueLightSuites/material-delivery-app/issues), labeled `phase-1`/`phase-2`/`phase-3`. Issue numbers are linked inline.
+See [STATUS.md](./STATUS.md) first — it's the verified inventory of what's actually built. This file is the plan for what's left, ordered by what's actually blocking a working product.
 
-### 1. Add Form Validation to All Forms
+The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. Today only the first step (posting a request) is real. Everything from "a driver sees it" onward doesn't exist yet.
 
-- **Status:** Not Started
-- **Priority:** HIGH
-- **Files Affected:**
-  - `src/screens/Contractor/NewRequest.tsx` (currently has basic validation)
-  - `src/screens/Auth/SignIn.tsx` (has validation ✓)
-  - `src/screens/Auth/SignUp.tsx` (has validation ✓)
-- **Details:**
-  - Validate that all required fields are filled before proceeding to next step
-  - Show real-time validation feedback (red borders, error messages)
-  - Validate email format, password strength, address fields
-  - Test on all platforms (iOS/Android)
-- **Acceptance Criteria:**
-  - All form inputs show validation errors on blur/change
-  - Next/Submit buttons disabled until form is valid
-  - Error messages are clear and helpful
-
-### 2. Fix Delivery Request Submission Failure
-
-- **Status:** In Progress
-- **Priority:** HIGH
-- **Error:** "Failed to submit request. Please try again."
-- **Investigation Steps:**
-  1. Verify `delivery_requests` table exists in Supabase
-  2. Check RLS policies allow INSERT from authenticated users
-  3. Verify auth_id column exists and matches schema
-  4. Check console logs for specific API error codes (400/401/403/404)
-  5. Validate request payload matches table columns exactly
-- **Possible Causes:**
-  - Table doesn't exist in Supabase (need to run SQL migration)
-  - RLS policies blocking INSERT operation (403 Forbidden)
-  - Missing or misnamed columns in table
-  - Invalid data types in payload (e.g., weight as string instead of number)
-  - Access token expired or invalid
-- **Solution Path:**
-  1. Check Supabase dashboard > Tables > delivery_requests exists
-  2. Check RLS policies are enabled and correct
-  3. Enable detailed error logging (already done)
-  4. Test with curl or Postman to isolate client vs API issue
-  5. Add request/response logging to axios interceptors
-
-### 3. Implement Session Persistence
-
-- **Status:** Not Started
-- **Priority:** HIGH
-- **Details:**
-  - Store accessToken in SecureStore (iOS) or EncryptedSharedPreferences (Android)
-  - Restore session on app launch from stored token
-  - Handle token expiration and refresh
-  - Auto-logout if token is invalid
-- **Files to Create/Modify:**
-  - Create `src/services/auth/sessionService.ts`
-  - Update `src/App.tsx` to restore session on mount
-  - Update `AuthContext.tsx` to support persistent state
-- **Dependencies:** `react-native-encrypted-storage` or `expo-secure-store`
-- **Acceptance Criteria:**
-  - User stays logged in after closing and reopening app
-  - Token refresh happens automatically
-  - Invalid tokens trigger re-authentication
-  - No plaintext tokens stored anywhere
+Phases are ordered by dependency, not by size — Phase 1 is the whole reason this is a two-sided marketplace and not just a form. Don't start Phase 2 or 3 work before Phase 1 closes the loop.
 
 ---
 
-## 🟡 Important Features (Should Fix Soon)
+## Phase 1 — Close the marketplace loop (blocking — nothing else matters until this works)
 
-### 4. Replace Mock Data in RequestList with Real API Calls
+Without this phase, a driver account is useless and the app is just a contractor intake form.
 
-- **Status:** Not Started
-- **Priority:** HIGH
-- **Files Affected:** `src/screens/Contractor/RequestList.tsx`
-- **Details:**
-  - Remove MOCK_REQUESTS constant
-  - Fetch requests from `getDeliveryRequests()` on component mount
-  - Add pull-to-refresh functionality
-  - Add pagination/infinite scroll for large lists
-  - Show loading skeleton while fetching
-  - Handle empty state and errors gracefully
-- **Implementation:**
-  ```typescript
-  useEffect(() => {
-    if (accessToken && user?.id) {
-      fetchRequests(accessToken, `auth_id=eq.${user.id}`);
-    }
-  }, [accessToken, user?.id]);
-  ```
-- **Acceptance Criteria:**
-  - Requests load from database on component mount
-  - Filtered by current user's auth_id
-  - Pull-to-refresh triggers new fetch
-  - Empty state shows when user has no requests
-  - Loading states properly displayed
+### 1. Driver job feed — show open requests to drivers ([#1](https://github.com/BlueLightSuites/material-delivery-app/issues/1))
 
-### 5. Implement Delivery Request Details/Edit Screen
+- **Status:** Done
+- **File:** `src/screens/Driver/JobsNearby.tsx`
+- Lists all `delivery_requests` with `status = 'pending'` via `getDeliveryRequests(accessToken, 'status=eq.pending')`. No distance filtering yet (needs item 3's coordinates). Shows material category, weight/unit, pickup/dropoff address, trailer requirement. Pull-to-refresh + refetch on focus, same pattern as `RequestList.tsx`. Tapping a card navigates to `JobDetail` with the request id.
+- Not done yet: `JobDetail` itself is still a placeholder, so tapping through doesn't do anything useful — that's item 4. There's also no Accept action anywhere yet — that's item 2, and it needs an RLS policy change before it can work.
 
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files to Create:**
-  - `src/screens/Contractor/RequestDetail.tsx`
-- **Details:**
-  - Show full request details (location map view, material info, vehicle requirements)
-  - Allow editing of pending requests only
-  - Allow cancellation of pending requests
-  - Show request status timeline
-  - Show assigned driver info (when assigned)
-- **Navigation:** RequestList → RequestDetail (on card tap)
-- **Acceptance Criteria:**
-  - All request fields displayed clearly
-  - Edit button navigates to edit screen
-  - Delete/cancel only available for pending requests
-  - Changes saved back to database
+### 2. Accept a job — the actual matching mechanism ([#2](https://github.com/BlueLightSuites/material-delivery-app/issues/2))
 
-### 6. Implement Driver Dashboard (JobsNearby)
+- **Status:** Not started
+- Add a `PATCH` to `delivery_requests`: set `assigned_driver_id` and `status = 'assigned'`. There's no `updateDeliveryRequest()` function yet — add one next to `createDeliveryRequest`/`getDeliveryRequests` in `src/services/api/deliveryRequests.ts`.
+- **RLS gap:** the current RLS policies in `sql/create_delivery_requests_table.sql` only let a request's owner (`auth_id = auth.uid()`) SELECT/UPDATE/DELETE it. A driver accepting someone else's request will be blocked by RLS as written. This needs a new policy — e.g. allow UPDATE when `status = 'pending'` and the update only sets `assigned_driver_id`/`status`, regardless of `auth_id`. Write this carefully; don't just open UPDATE to any authenticated user or drivers could edit request contents.
+- Wire "Accept" button in `JobsNearby.tsx` (or a job detail screen) to call it, then remove the job from the feed / move it to an "active jobs" view.
+- Prevent double-accept (two drivers tapping "Accept" at once) — the `WHERE status = 'pending'` on the update should make the second accept affect 0 rows; check the response and show "already taken" if so.
 
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files Affected:** `src/screens/Driver/JobsNearby.tsx`
-- **Details:**
-  - Display available delivery requests near driver's location
-  - Filter by distance, material type, vehicle requirements
-  - Show estimated earnings for each job
-  - Accept/reject jobs with confirmation
-  - Add to active jobs list when accepted
-- **Features Needed:**
-  - Real-time location tracking (GPS)
-  - Distance calculation from driver location to pickup/dropoff
-  - Job matching algorithm
-  - Notifications when new jobs available nearby
-- **Acceptance Criteria:**
-  - Jobs load and display with distance calculated
-  - Driver can accept jobs
-  - Accepted jobs move to active list
-  - No jobs shown outside driver's service area
+### 3. Location capture for requests (needed for any real matching later) ([#3](https://github.com/BlueLightSuites/material-delivery-app/issues/3))
 
-### 7. Implement Active Jobs/Tracking Screen
+- **Status:** Not started
+- `pickup_lat/lng` and `dropoff_lat/lng` columns already exist in `delivery_requests` but nothing populates them.
+- Minimum viable: geocode the typed address on submit (a geocoding API call) rather than building full autocomplete yet — autocomplete is Phase 3 polish, but *some* coordinate is needed before "nearby" can mean anything.
+- Add `expo-location` dependency for the driver's current position (needed for "nearby" filtering and later for live tracking). Add the required permission strings to `app.json` (`NSLocationWhenInUseUsageDescription` for iOS, `ACCESS_FINE_LOCATION` for Android) — currently missing entirely.
 
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files Affected:** `src/screens/Contractor/Tracking.tsx` (expand), `src/screens/Driver/ActiveJobs.tsx` (create)
-- **Details:**
-  - Show real-time tracking of in-transit deliveries
-  - Display driver location on map
-  - Show delivery progress (pickup → in transit → dropped off)
-  - Allow status updates (arrived at pickup, loaded, en route, arrived at dropoff)
-  - Show estimated time of arrival
-- **Features:**
-  - Real-time location updates via WebSocket or polling
-  - Maps integration for route visualization
-  - Status update buttons/UI
-- **Acceptance Criteria:**
-  - Map shows current driver location
-  - Delivery status updates in real-time
-  - ETA calculated and displayed
-  - Status history logged
+### 4. Driver-side request detail + active job ([#4](https://github.com/BlueLightSuites/material-delivery-app/issues/4))
 
-### 8. Implement Profile Screen Functionality
+- **Status:** Not started
+- `src/screens/Driver/JobDetail.tsx` is a placeholder. Needs real request data (fetch by id), Accept action (see item 2), and status-advance actions once accepted (arrived at pickup → picked up → en route → delivered), each a status update on the row.
+- Needs a way for the driver to see their current active job after accepting — right now there's no "my active jobs" list on the driver side at all.
 
-- **Status:** Partially Done (UI complete, no functionality)
-- **Priority:** MEDIUM
-- **Files Affected:** `src/screens/Common/Profile.tsx`
-- **Details:**
-  - Edit Profile button → navigate to edit screen
-  - Change Password → password reset flow
-  - Payment Methods → manage payment cards/accounts
-  - Toggle notifications/email preferences (save to database)
-  - Help & Support → open support link/email
-  - Privacy Policy/Terms → open in browser or in-app modal
-  - Logout → clear session (✓ already done)
-- **Files to Create:**
-  - `src/screens/Common/EditProfile.tsx`
-  - `src/screens/Common/ChangePassword.tsx`
-  - `src/screens/Common/PaymentMethods.tsx`
-- **Acceptance Criteria:**
-  - All menu items navigate or perform actions
-  - Settings persist to database
-  - User preferences reflected across app
-  - Links open correctly
+### 5. Contractor tracking screen — make it real ([#5](https://github.com/BlueLightSuites/material-delivery-app/issues/5))
 
-### 9. Add Address Autocomplete
+- **Status:** Not started
+- File: `src/screens/Contractor/Tracking.tsx` (currently just echoes the request ID).
+- Fetch the request by id, show current status, and once "driver location" exists (Phase 1 item 3 + Phase 2 live location), show it on a map.
+- `src/components/map/MapView.tsx` is an empty file despite `react-native-maps` being installed — this is where a real map component belongs.
 
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files Affected:** `src/screens/Contractor/NewRequest.tsx`
-- **Details:**
-  - Integrate Google Places API for address suggestions
-  - Show dropdown of address suggestions as user types
-  - Extract lat/lng from selected address
-  - Store coordinates with request
-- **Dependencies:** `@react-native-community/google-places` or similar
-- **Implementation:**
-  - Add places API to config
-  - Update pickup/dropoff input components
-  - Test address parsing and coordinate extraction
-- **Acceptance Criteria:**
-  - Address suggestions appear as user types
-  - Selecting address populates coordinates
-  - Invalid addresses rejected on submit
+### 6. `users` table migration ([#6](https://github.com/BlueLightSuites/material-delivery-app/issues/6))
 
-### 10. Add GPS/Geolocation Services
+- **Status:** Not started
+- `authService.ts` depends on a `users` table (`auth_id`, `email`, `name`, `role`) that has no migration file anywhere in the repo — only `delivery_requests` does. Write `sql/create_users_table.sql` with the schema and matching RLS (a user should read their own row; consider whether drivers/contractors need to read each other's *public* profile fields once assignment exists, e.g. a contractor seeing their assigned driver's name).
+- Without this, no one can stand up a fresh Supabase project for this app.
 
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files to Create:** `src/services/geolocation/locationService.ts` (expand existing stub)
-- **Details:**
-  - Real-time location tracking for active jobs
-  - Distance calculation between points
-  - Geofencing for pickup/dropoff locations
-  - Background location updates for drivers
-- **Dependencies:** `expo-location`
-- **Permissions:** Request location permissions on iOS/Android
-- **Acceptance Criteria:**
-  - Driver location updates while job is active
-  - Distance calculations are accurate
-  - Arrival notifications when near pickup/dropoff
+### 7. Session persistence ([#7](https://github.com/BlueLightSuites/material-delivery-app/issues/7))
 
-### 11. Add Push Notifications
-
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Files to Create:** `src/services/notifications/notificationService.ts`
-- **Details:**
-  - Notify contractors when driver assigned to request
-  - Notify drivers of new nearby jobs
-  - Notify contractors of delivery status updates
-  - Notify drivers of pickup/dropoff location details
-- **Dependencies:** `expo-notifications`
-- **Implementation:**
-  - Request notification permissions
-  - Set up Firebase Cloud Messaging (FCM) / APNs
-  - Handle notification taps to navigate to relevant screens
-- **Acceptance Criteria:**
-  - Notifications appear when expected
-  - Tapping notification opens relevant screen
-  - User can enable/disable notifications in Profile
+- **Status:** Not started
+- `AuthContext` (`src/context/AuthContext.tsx`) is in-memory only — force-quitting the app logs the user out every time, which will read as "broken" to any real user.
+- Add `expo-secure-store`, persist `accessToken` + minimal user info, restore on launch, and handle an expired/invalid token by falling back to the sign-in screen.
+- Supabase access tokens are short-lived — this also needs a refresh-token flow (Supabase issues a `refresh_token` alongside `access_token`; currently discarded entirely in `authService.ts`).
 
 ---
 
-## 🟢 Nice-to-Have Features (Future)
+## Phase 2 — Trust, safety, and money (needed before real users transact)
 
-### 12. Implement Payment System
+Nothing here matters until Phase 1's loop works, but all of it is required before this could handle real contractors and real drivers moving real money.
 
-- **Status:** Not Started
-- **Priority:** LOW
-- **Files to Create:** `src/screens/Payments/` directory
-- **Details:**
-  - Show delivery pricing breakdown
-  - Process payments for completed requests
-  - Store payment methods securely
-  - Show payment history
-  - Calculate driver earnings
-- **Dependencies:** Stripe or PayPal integration
-- **Note:** Requires PCI compliance and backend payment processing
+### 8. Live driver location + ETA ([#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8))
 
-### 13. Add Analytics/Reporting
+- Depends on Phase 1 items 3 and 4. Push the driver's position periodically (foreground first; background tracking is its own can of worms — evaluate whether it's needed for v1 or whether foreground-only is acceptable given drivers keep the app open during a delivery).
+- Realtime delivery to the contractor: Supabase Realtime (already a dependency via `@supabase/supabase-js`, currently unused) is the natural fit — subscribe to updates on the assigned request's row instead of polling.
 
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Track delivery metrics (completed, in-transit, pending)
-  - Calculate driver earnings/performance
-  - Generate reports for contractors and drivers
-  - Track app usage and user behavior
-- **Dependencies:** Firebase Analytics, Segment, or similar
-- **Files to Create:** Analytics service wrapper
+### 9. Push notifications ([#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9))
 
-### 14. Implement Admin Dashboard
+- Add `expo-notifications`. Minimum set: contractor notified on "driver assigned" and "delivered"; driver notified on "new job nearby" (once geofencing/radius filtering exists).
 
-- **Status:** Not Started
-- **Priority:** LOW
-- **Files to Create:** `src/screens/Admin/` directory
-- **Details:**
-  - View all users, requests, and jobs
-  - Approve/reject contractors
-  - Suspend/ban users
-  - View system metrics and health
-  - Manage platform settings
-- **Authentication:** Admin role check in navigation
+### 10. Payments ([#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10))
 
-### 15. Add Social Authentication
+- `src/services/payments/index.ts` and `src/components/payments/PaymentForm.tsx` are empty files with no dependency chosen yet (Stripe is the common choice for marketplace payouts — has built-in support for split payments/driver payouts via Connect, which this app will need). This needs its own scoping pass before implementation starts: pricing model (flat by weight/distance? contractor-set price?), who holds funds until delivery completes, driver payout timing, refund/dispute path.
 
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Sign in with Google
-  - Sign in with Apple (required for iOS)
-  - Link social accounts to existing profiles
-- **Dependencies:** `@react-native-google-signin/google-signin`
+### 11. Ratings ([#11](https://github.com/BlueLightSuites/material-delivery-app/issues/11))
 
-### 16. Implement Dark Mode
+- `src/components/job/Rating.tsx` exists but isn't wired to anything. Needed once deliveries actually complete, for both sides to build trust signals.
 
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Create dark theme color scheme
-  - Toggle dark/light mode in Profile
-  - Persist user preference
-- **Files to Modify:** All components' StyleSheets
+### 12. Request detail / edit / cancel for contractors ([#12](https://github.com/BlueLightSuites/material-delivery-app/issues/12))
 
-### 17. Add Accessibility Features
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Add accessibility labels to all interactive elements
-  - Test with screen readers (VoiceOver on iOS)
-  - Ensure minimum font sizes
-  - High contrast mode support
-  - Keyboard navigation support
-
-### 18. Implement Offline Mode
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Cache requests/jobs locally
-  - Queue actions when offline
-  - Sync when connection restored
-  - Show offline indicator to user
+- No `RequestDetail` screen exists; `RequestList` navigates straight to `Tracking`. A contractor currently cannot cancel or edit a request after submitting it, even while it's still pending.
 
 ---
 
-## 📋 Testing & QA
+## Phase 3 — Polish and scale (do after the marketplace actually works)
 
-### 19. Add Unit Tests
-
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Details:**
-  - Test authentication flow
-  - Test form validation
-  - Test API service calls (with mocks)
-  - Test context state management
-- **Framework:** Jest + React Native Testing Library
-- **Target Coverage:** 70%+
-
-### 20. Add Integration Tests
-
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Details:**
-  - Test signup → dashboard flow
-  - Test request creation → view in list
-  - Test driver accepting job flow
-  - End-to-end delivery workflow
-
-### 21. Perform Manual QA Testing
-
-- **Status:** Not Started
-- **Priority:** HIGH
-- **Devices:** iPhone, iPad, Android phones
-- **Test Cases:**
-  - Signup/login/logout flows
-  - Form submissions and validation
-  - Navigation between screens
-  - Offline behavior
-  - Memory/performance on old devices
+- **Address autocomplete** (replace the Phase 1 geocode-on-submit with real-time suggestions — Google Places or similar). ([#13](https://github.com/BlueLightSuites/material-delivery-app/issues/13))
+- **Profile screen functionality** — every action in `src/screens/Common/Profile.tsx` (Edit Profile, Change Password, Payment Methods, Help, Privacy, Terms) is currently a placeholder `Alert`. ([#14](https://github.com/BlueLightSuites/material-delivery-app/issues/14))
+- **Admin dashboard** — no screens exist. Needed for support/dispute handling and manual intervention once real users are on the platform. ([#15](https://github.com/BlueLightSuites/material-delivery-app/issues/15))
+- **Redux cleanup** — `src/store/` and `src/store/slices/` are fully built but never imported anywhere. Either wire it up for state that genuinely needs it (driver job feed, live delivery status) or delete it so it stops misleading future readers of the codebase. ([#16](https://github.com/BlueLightSuites/material-delivery-app/issues/16))
+- **Dead file cleanup** — `src/services/api/deliveries.ts` is entirely commented out; resolve or remove it. ([#17](https://github.com/BlueLightSuites/material-delivery-app/issues/17))
+- Unit + integration test coverage (currently none beyond the Jest config existing). ([#18](https://github.com/BlueLightSuites/material-delivery-app/issues/18))
+- Social auth (Google/Apple). ([#19](https://github.com/BlueLightSuites/material-delivery-app/issues/19))
+- Dark mode, accessibility pass, offline mode. ([#20](https://github.com/BlueLightSuites/material-delivery-app/issues/20))
+- `app.json` production readiness: real bundle identifiers (currently `com.yourcompany.materialdelivery` placeholders), app icons, EAS build config. ([#21](https://github.com/BlueLightSuites/material-delivery-app/issues/21))
 
 ---
 
-## 📚 Documentation
+## Suggested next step
 
-### 22. Add Code Comments & JSDoc
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Document all public functions
-  - Add inline comments for complex logic
-  - Document API service methods
-  - Create architectural overview document
-
-### 23. Create API Documentation
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Document all Supabase endpoints used
-  - Document error codes and handling
-  - Create API integration guide for new developers
-
-### 24. Create Setup & Deployment Guide
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Environment setup instructions
-  - Supabase configuration guide
-  - iOS/Android build instructions
-  - Deployment checklist
-
----
-
-## 🔧 Code Quality & Maintenance
-
-### 25. Fix Linting Issues
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Configure ESLint rules
-  - Run linter across codebase
-  - Fix all warnings and errors
-  - Add pre-commit hooks
-
-### 26. Refactor/Optimize Components
-
-- **Status:** Not Started
-- **Priority:** LOW
-- **Details:**
-  - Break down large components
-  - Reduce re-renders with useMemo/useCallback
-  - Optimize StyleSheets
-  - Remove unused imports
-
-### 27. Update Dependencies
-
-- **Status:** Not Started
-- **Priority:** MEDIUM
-- **Details:**
-  - Check for outdated packages
-  - Update to latest stable versions
-  - Test for breaking changes
-  - Review security advisories
-
----
-
-## 📊 Current Status Summary
-
-| Category           | Total  | Done  | In Progress | Not Started |
-| ------------------ | ------ | ----- | ----------- | ----------- |
-| Critical Issues    | 3      | 0     | 1           | 2           |
-| Important Features | 8      | 0     | 0           | 8           |
-| Nice-to-Have       | 7      | 0     | 0           | 7           |
-| Testing & QA       | 3      | 0     | 0           | 3           |
-| Documentation      | 3      | 0     | 0           | 3           |
-| Code Quality       | 3      | 0     | 0           | 3           |
-| **TOTAL**          | **27** | **0** | **1**       | **26**      |
-
----
-
-## 🎯 Next Steps (Recommended Priority Order)
-
-1. **Fix Delivery Request Submission** (#2) - Blocking feature testing
-2. **Add Form Validation** (#1) - Improves UX and prevents errors
-3. **Implement Session Persistence** (#3) - Core user experience
-4. **Replace Mock Data** (#4) - Enable real data testing
-5. **Implement Driver Dashboard** (#6) - Core feature for drivers
-
----
-
-## Notes
-
-- All dates are as of March 19, 2026
-- Some tasks depend on others (e.g., #4 requires #2 to work)
-- Prioritization can change based on business requirements
-- Community feedback should influence prioritization
-- Security and critical bugs take precedence over features
+Item 1 (driver job feed) is done. Next: item 2 (Accept a job) → item 6 (`users` table migration, which item 2's RLS policy work will force anyway) → item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once accept/assign actually works.
