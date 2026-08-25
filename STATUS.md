@@ -52,7 +52,7 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 ## Backend / infra gaps
 
-- Two migrations are checked in: `sql/create_delivery_requests_table.sql` and `sql/enable_driver_job_matching.sql` (the accept-flow RPC + SELECT policies). **Neither has necessarily been applied to the live Supabase project** — these are files in the repo, not evidence of live schema state; run them via the Supabase SQL editor or migration tooling. The `users` table that `authService.ts` reads and writes still has **no migration file in the repo at all** — it exists only in the live Supabase project (or doesn't, if this is a fresh environment). Anyone setting this project up from scratch cannot reproduce the schema (tracked as issue #6).
+- Three migrations are now checked in: `sql/create_delivery_requests_table.sql`, `sql/enable_driver_job_matching.sql` (accept-flow RPC + SELECT policies), and `sql/create_users_table.sql`. **None of them are confirmed applied to the live Supabase project** — these are files in the repo, not evidence of live schema state; run them via the Supabase SQL editor or migration tooling. `create_users_table.sql` in particular replaces the previous situation where `authService.ts` depended on a table with zero migration history anywhere.
 - `.env` is present but both `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are currently blank in this checkout — the app cannot talk to Supabase until those are filled in locally.
 - `app.json` has placeholder bundle identifiers (`com.yourcompany.materialdelivery`) and no permission descriptions, no EAS build config — not ready for a real device build or store submission.
 

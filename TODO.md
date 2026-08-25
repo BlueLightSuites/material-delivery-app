@@ -51,9 +51,10 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 6. `users` table migration ([#6](https://github.com/BlueLightSuites/material-delivery-app/issues/6))
 
-- **Status:** Not started
-- `authService.ts` depends on a `users` table (`auth_id`, `email`, `name`, `role`) that has no migration file anywhere in the repo — only `delivery_requests` does. Write `sql/create_users_table.sql` with the schema and matching RLS (a user should read their own row; consider whether drivers/contractors need to read each other's *public* profile fields once assignment exists, e.g. a contractor seeing their assigned driver's name).
-- Without this, no one can stand up a fresh Supabase project for this app.
+- **Status:** Done
+- **Migration:** `sql/create_users_table.sql` — `id`, `auth_id` (unique FK to `auth.users`), `email`, `name`, `phone`, `role`, timestamps, matching the shape `authService.ts` actually reads/writes. RLS: a user can read/insert/update only their own row.
+- **Deliberately not included:** letting a contractor/driver read each other's public profile fields (e.g. a contractor seeing their assigned driver's name) once matched via `delivery_requests.assigned_driver_id`. Left for when that UI (item 4/5) actually needs it rather than opened up speculatively — see the comment in the migration.
+- **Not run yet**, same as item 2's migration — apply via the Supabase SQL editor or migration tooling before relying on it.
 
 ### 7. Session persistence ([#7](https://github.com/BlueLightSuites/material-delivery-app/issues/7))
 
@@ -107,4 +108,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1 and 2 (driver job feed, accept a job) are done in code. **The new SQL migration (`sql/enable_driver_job_matching.sql`) still needs to be run against the live Supabase project** before either actually works end-to-end. Next: item 6 (`users` table migration) → item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once assign actually works live.
+Items 1, 2, and 6 (driver job feed, accept a job, `users` migration) are done in code. **None of the three SQL migrations in `sql/` are confirmed applied to the live Supabase project** — that needs to happen before any of this works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next: item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once assign actually works live.
