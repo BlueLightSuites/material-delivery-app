@@ -13,7 +13,8 @@ This app is meant to become an Uber-like marketplace for construction material d
 - **Role-based navigation** (`src/navigation/MainNavigator.tsx`) — after login, drivers and contractors see different stacks. Admin role exists in the type/signup form but has no screens.
 - **Create a delivery request** (`src/screens/Contractor/NewRequest.tsx` → `src/services/api/deliveryRequests.ts`) — real 4-step wizard (location → material → vehicle → review), validated, submitted as a genuine `POST` to `delivery_requests` in Supabase. This is fully wired, not mocked.
 - **View my requests** (`src/screens/Contractor/RequestList.tsx`) — fetches the contractor's own requests from Supabase, filters by status, pull-to-refresh. Also fully wired, not mocked (older docs in this repo say otherwise — see "Docs vs. reality" below).
-- **Driver job feed** (`src/screens/Driver/JobsNearby.tsx`) — lists all `delivery_requests` with `status = 'pending'`, pull-to-refresh, refetches on focus. A driver can now see open requests. No distance/radius filtering yet (no coordinates captured on requests — see gaps below). Tapping a job goes to `JobDetail`, which is still a placeholder, and there is no Accept action anywhere yet, so a driver can look but not act.
+- **Driver job feed + accept** (`src/screens/Driver/JobsNearby.tsx`) — lists all `delivery_requests` with `status = 'pending'`, pull-to-refresh, refetches on focus. Each job has an "Accept" button calling the `accept_delivery_request` RPC (`sql/enable_driver_job_matching.sql`), which atomically assigns the driver only if the job is still pending; a job already taken by another driver shows an alert and refetches instead of erroring. No distance/radius filtering yet (no coordinates captured on requests — see gaps below). Tapping "View Details" goes to `JobDetail`, which is still a placeholder — there's no way yet to see or advance a job after accepting it.
+  - **Requires the migration to actually be applied** to the live Supabase project — see Backend/infra gaps below. Until then this UI will look broken (empty feed, or Accept silently failing) even though the code is correct.
 - **Logout** — clears in-memory auth state (see session caveat below).
 
 ## What exists as UI shell only ("Coming soon")
@@ -43,7 +44,7 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 - **No session persistence.** `AuthContext` (`src/context/AuthContext.tsx`) holds `user` and `accessToken` in plain `useState`. Force-quit the app and you're logged out — every session starts at the sign-in screen. No `expo-secure-store` or equivalent is installed.
 - **No token refresh.** The Supabase access token is short-lived; nothing refreshes it, so a session left open will start silently failing requests.
-- **No accept/dispatch mechanism.** Drivers can now *see* pending requests (`JobsNearby.tsx`), but there is no way for one to claim a job — no Accept action, and the current RLS policies on `delivery_requests` only allow the request's owner to UPDATE it, so even a naive "accept" button would be rejected by the database as written. This is still the core gap standing between this app and being "Uber-like."
+- **Accept/dispatch mechanism exists in code, not yet live.** The accept flow (job feed → Accept → `accept_delivery_request` RPC) is implemented, but the SQL migration that creates the RPC and the supporting RLS policies hasn't been applied to the live Supabase project yet — see Backend/infra gaps below. Once applied, this closes the core marketplace loop.
 - **No geolocation.** `expo-location` isn't a dependency. No permission strings are declared in `app.json` for iOS/Android. Pickup/dropoff are free-text addresses only — `pickup_lat/lng` and `dropoff_lat/lng` columns exist in the `delivery_requests` table but are never populated by the client.
 - **No live tracking.** Given no geolocation and an empty `Tracking.tsx`, there's no way for a contractor to see where their delivery is.
 - **No payments.** No Stripe/PayPal dependency, no pricing/estimate logic anywhere. Deliveries have no cost.
@@ -51,10 +52,9 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 ## Backend / infra gaps
 
-- Only one migration is checked in: `sql/create_delivery_requests_table.sql`. The `users` table that `authService.ts` reads and writes has **no migration file in the repo** — it exists only in the live Supabase project (or doesn't, if this is a fresh environment). Anyone setting this project up from scratch cannot reproduce the schema.
+- Two migrations are checked in: `sql/create_delivery_requests_table.sql` and `sql/enable_driver_job_matching.sql` (the accept-flow RPC + SELECT policies). **Neither has necessarily been applied to the live Supabase project** — these are files in the repo, not evidence of live schema state; run them via the Supabase SQL editor or migration tooling. The `users` table that `authService.ts` reads and writes still has **no migration file in the repo at all** — it exists only in the live Supabase project (or doesn't, if this is a fresh environment). Anyone setting this project up from scratch cannot reproduce the schema (tracked as issue #6).
 - `.env` is present but both `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are currently blank in this checkout — the app cannot talk to Supabase until those are filled in locally.
 - `app.json` has placeholder bundle identifiers (`com.yourcompany.materialdelivery`) and no permission descriptions, no EAS build config — not ready for a real device build or store submission.
-- Working tree currently has uncommitted changes (`ios/MaterialDelivery.xcodeproj/project.pbxproj`, `package.json`, `package-lock.json`) and untracked files (`ios/MaterialDelivery.xcworkspace/`, `ios/Podfile.lock`, `patches/`) from a recent `pod install`/prebuild — worth committing or reviewing before they're lost, separate from the feature work tracked here.
 
 ## Docs vs. reality
 

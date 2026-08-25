@@ -23,11 +23,11 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 2. Accept a job — the actual matching mechanism ([#2](https://github.com/BlueLightSuites/material-delivery-app/issues/2))
 
-- **Status:** Not started
-- Add a `PATCH` to `delivery_requests`: set `assigned_driver_id` and `status = 'assigned'`. There's no `updateDeliveryRequest()` function yet — add one next to `createDeliveryRequest`/`getDeliveryRequests` in `src/services/api/deliveryRequests.ts`.
-- **RLS gap:** the current RLS policies in `sql/create_delivery_requests_table.sql` only let a request's owner (`auth_id = auth.uid()`) SELECT/UPDATE/DELETE it. A driver accepting someone else's request will be blocked by RLS as written. This needs a new policy — e.g. allow UPDATE when `status = 'pending'` and the update only sets `assigned_driver_id`/`status`, regardless of `auth_id`. Write this carefully; don't just open UPDATE to any authenticated user or drivers could edit request contents.
-- Wire "Accept" button in `JobsNearby.tsx` (or a job detail screen) to call it, then remove the job from the feed / move it to an "active jobs" view.
-- Prevent double-accept (two drivers tapping "Accept" at once) — the `WHERE status = 'pending'` on the update should make the second accept affect 0 rows; check the response and show "already taken" if so.
+- **Status:** Done
+- **Migration:** `sql/enable_driver_job_matching.sql` — adds a `SECURITY DEFINER` RPC function `accept_delivery_request(p_request_id)` that atomically sets `assigned_driver_id`/`status` only on a still-`pending` row, so no broad UPDATE policy had to be opened up for drivers (the function itself is the security boundary — it can't be used to edit request contents).
+- **Bug fix included here:** that same migration also adds the SELECT policies the driver job feed (#1) actually needed to return any rows at all — the original RLS only let a request's owner see it, so `JobsNearby` was silently returning zero jobs for every driver until now. Fixed with a "pending requests are visible to any authenticated user" policy plus "assigned driver can see their own assignment."
+- **Client:** `acceptDeliveryRequest()` in `src/services/api/deliveryRequests.ts` calls the RPC. Wired to an "Accept" button in `src/screens/Driver/JobsNearby.tsx`; on success the job drops out of the local list, on "already taken" (RPC returns zero rows) it shows an alert and refetches.
+- **Not run yet:** the SQL migration file is written but has not been applied to the live Supabase project in this checkout — run it in the Supabase SQL editor (or via migration tooling) before this will work end-to-end.
 
 ### 3. Location capture for requests (needed for any real matching later) ([#3](https://github.com/BlueLightSuites/material-delivery-app/issues/3))
 
@@ -107,4 +107,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Item 1 (driver job feed) is done. Next: item 2 (Accept a job) → item 6 (`users` table migration, which item 2's RLS policy work will force anyway) → item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once accept/assign actually works.
+Items 1 and 2 (driver job feed, accept a job) are done in code. **The new SQL migration (`sql/enable_driver_job_matching.sql`) still needs to be run against the live Supabase project** before either actually works end-to-end. Next: item 6 (`users` table migration) → item 7 (session persistence, so testing the loop doesn't require re-logging-in constantly). Location (item 3) and the tracking screen (item 5) can follow once assign actually works live.
