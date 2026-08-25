@@ -1,7 +1,20 @@
-import React from 'react';
-import { StyleSheet, View, Text, SafeAreaView } from 'react-native';
+import React, { useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useAuth } from '../../context/AuthContext';
+import { getDeliveryRequests, DeliveryRequest } from '../../services/api/deliveryRequests';
 
 type JobsNearbyNavigationProp = StackNavigationProp<MainStackParamList, 'JobsNearby'>;
 
@@ -10,12 +23,116 @@ interface JobsNearbyProps {
 }
 
 const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
+  const { accessToken } = useAuth();
+  const [jobs, setJobs] = useState<DeliveryRequest[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchJobs = async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await getDeliveryRequests(accessToken, 'status=eq.pending');
+      setJobs(data);
+    } catch (error) {
+      console.error('fetchJobs: Error fetching pending jobs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchJobs();
+    setRefreshing(false);
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchJobs();
+    }, [accessToken])
+  );
+
+  const renderJobCard = ({ item }: { item: DeliveryRequest }) => (
+    <TouchableOpacity
+      style={styles.jobCard}
+      onPress={() => item.id && navigation.navigate('JobDetail', { jobId: item.id })}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.materialText}>{item.material_category}</Text>
+        <Text style={styles.quantityText}>
+          {item.material_weight} {item.material_unit}
+        </Text>
+      </View>
+
+      <View style={styles.cardBody}>
+        <View style={styles.locationRow}>
+          <Text style={styles.locationIcon}>📍</Text>
+          <Text style={styles.locationText} numberOfLines={1}>
+            {item.pickup_address}
+          </Text>
+        </View>
+        <View style={styles.locationRow}>
+          <Text style={styles.locationIcon}>🎯</Text>
+          <Text style={styles.locationText} numberOfLines={1}>
+            {item.dropoff_address}
+          </Text>
+        </View>
+        {item.requires_trailer && (
+          <View style={styles.trailerBadge}>
+            <Text style={styles.trailerBadgeText}>🚛 Trailer required</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.cardFooter}>
+        <Text style={styles.viewDetailsText}>View Details →</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Available Jobs Near You</Text>
-        <Text style={styles.subtitle}>Coming soon...</Text>
-      </View>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Available Jobs</Text>
+          <Text style={styles.headerSubtitle}>
+            {jobs.length} pending {jobs.length === 1 ? 'request' : 'requests'}
+          </Text>
+        </View>
+
+        {loading && jobs.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#0066CC" />
+            <Text style={styles.loadingText}>Loading jobs...</Text>
+          </View>
+        ) : jobs.length > 0 ? (
+          <View style={styles.jobsList}>
+            <FlatList
+              data={jobs}
+              keyExtractor={(item) => item.id || ''}
+              renderItem={renderJobCard}
+              scrollEnabled={false}
+            />
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>🚚</Text>
+            <Text style={styles.emptyTitle}>No Jobs Right Now</Text>
+            <Text style={styles.emptySubtitle}>
+              Pull down to check for new delivery requests.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -25,21 +142,126 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  content: {
+  scrollView: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#999999',
+  },
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: 60,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 10,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#999999',
   },
-  subtitle: {
+  jobsList: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  jobCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    marginBottom: 12,
+  },
+  materialText: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  quantityText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#0066CC',
+  },
+  cardBody: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locationIcon: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+  locationText: {
+    fontSize: 13,
     color: '#666666',
+    flex: 1,
+  },
+  trailerBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  trailerBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#E65100',
+  },
+  cardFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    marginTop: 12,
+  },
+  viewDetailsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0066CC',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
   },
 });
 
