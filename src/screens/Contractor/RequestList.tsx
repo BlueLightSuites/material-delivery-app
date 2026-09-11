@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { getDeliveryRequests, DeliveryRequest as DBDeliveryRequest } from '../../services/api/deliveryRequests';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type RequestListNavigationProp = StackNavigationProp<MainStackParamList, 'RequestList'>;
 
@@ -282,40 +283,14 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         )}
       </ScrollView>
 
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('RequestList')}
-        >
-          <Text style={styles.navIcon}>📋</Text>
-          <Text style={styles.navLabel}>Requests</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('NewRequest')}
-        >
-          <Text style={styles.navIcon}>➕</Text>
-          <Text style={styles.navLabel}>New</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Tracking', { requestId: '1' })}
-        >
-          <Text style={styles.navIcon}>🚚</Text>
-          <Text style={styles.navLabel}>Tracking</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('Profile')}
-        >
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={styles.navLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <BottomNavBar
+        items={[
+          { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
+          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
+          { key: 'tracking', icon: '🚚', label: 'Tracking', onPress: () => navigation.navigate('Tracking', { requestId: '1' }) },
+          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+        ]}
+      />
     </SafeAreaView>
   );
 };
@@ -576,33 +551,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-  },
-
-  // Bottom Navigation
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    paddingBottom: 16,
-    paddingHorizontal: 8,
-    paddingTop: 12,
-  },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-  },
-  navIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  navLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#666666',
-    textAlign: 'center',
   },
 });
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text, SafeAreaView } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type EarningsNavigationProp = StackNavigationProp<MainStackParamList, 'Earnings'>;
 
@@ -16,6 +17,13 @@ const Earnings: React.FC<EarningsProps> = ({ navigation }) => {
         <Text style={styles.title}>My Earnings</Text>
         <Text style={styles.subtitle}>Coming soon...</Text>
       </View>
+      <BottomNavBar
+        items={[
+          { key: 'jobs', icon: '🚚', label: 'Jobs', onPress: () => navigation.navigate('JobsNearby') },
+          { key: 'earnings', icon: '💰', label: 'Earnings', onPress: () => navigation.navigate('Earnings') },
+          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+        ]}
+      />
     </SafeAreaView>
   );
 };

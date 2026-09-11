@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, SafeAreaView } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type TrackingNavigationProp = StackNavigationProp<MainStackParamList, 'Tracking'>;
 type TrackingRouteProp = RouteProp<MainStackParamList, 'Tracking'>;
@@ -22,6 +23,14 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
         <Text style={styles.subtitle}>Request ID: {requestId}</Text>
         <Text style={styles.subtitle}>Coming soon...</Text>
       </View>
+      <BottomNavBar
+        items={[
+          { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
+          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
+          { key: 'tracking', icon: '🚚', label: 'Tracking', onPress: () => navigation.navigate('Tracking', { requestId: '1' }) },
+          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+        ]}
+      />
     </SafeAreaView>
   );
 };

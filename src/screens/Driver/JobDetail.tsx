@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, SafeAreaView } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type JobDetailNavigationProp = StackNavigationProp<MainStackParamList, 'JobDetail'>;
 type JobDetailRouteProp = RouteProp<MainStackParamList, 'JobDetail'>;
@@ -22,6 +23,13 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
         <Text style={styles.subtitle}>Job ID: {jobId}</Text>
         <Text style={styles.subtitle}>Coming soon...</Text>
       </View>
+      <BottomNavBar
+        items={[
+          { key: 'jobs', icon: '🚚', label: 'Jobs', onPress: () => navigation.navigate('JobsNearby') },
+          { key: 'earnings', icon: '💰', label: 'Earnings', onPress: () => navigation.navigate('Earnings') },
+          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+        ]}
+      />
     </SafeAreaView>
   );
 };

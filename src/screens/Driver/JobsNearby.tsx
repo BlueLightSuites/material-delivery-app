@@ -20,6 +20,7 @@ import {
   acceptDeliveryRequest,
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type JobsNearbyNavigationProp = StackNavigationProp<MainStackParamList, 'JobsNearby'>;
 
@@ -145,7 +146,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
       >
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Available Jobs</Text>
@@ -178,6 +179,13 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+      <BottomNavBar
+        items={[
+          { key: 'jobs', icon: '🚚', label: 'Jobs', onPress: () => navigation.navigate('JobsNearby') },
+          { key: 'earnings', icon: '💰', label: 'Earnings', onPress: () => navigation.navigate('Earnings') },
+          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+        ]}
+      />
     </SafeAreaView>
   );
 };
