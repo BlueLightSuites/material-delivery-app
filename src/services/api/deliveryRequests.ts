@@ -140,6 +140,81 @@ export async function acceptDeliveryRequest(
 }
 
 /**
+ * Fetch a single delivery request by id. Returns null if it doesn't exist
+ * or the caller isn't allowed to see it (RLS filters silently rather than
+ * erroring, same as the list endpoint).
+ */
+export async function getDeliveryRequestById(
+  accessToken: string,
+  requestId: string
+): Promise<DeliveryRequest | null> {
+  try {
+    const response = await retryWithBackoff(async () => {
+      return await axios.get(
+        `${API_URL}/rest/v1/delivery_requests?select=*&id=eq.${requestId}`,
+        {
+          headers: {
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+    });
+
+    const rows = (response.data ?? []) as DeliveryRequest[];
+    return rows[0] || null;
+  } catch (error: any) {
+    console.error('getDeliveryRequestById error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    return null;
+  }
+}
+
+/**
+ * Advance an assigned delivery request to its next status ('in_transit' or
+ * 'completed'). Calls the `advance_delivery_status` Postgres RPC (see
+ * sql/enable_driver_status_updates.sql), which only succeeds for the
+ * driver the request is assigned to and only moves status forward one
+ * step. Returns the updated request, or null if the transition wasn't
+ * valid (e.g. someone else already advanced it) - the caller should
+ * treat that as "state changed underneath you," not a hard error.
+ */
+export async function advanceDeliveryStatus(
+  accessToken: string,
+  requestId: string,
+  nextStatus: 'in_transit' | 'completed'
+): Promise<DeliveryRequest | null> {
+  try {
+    const response = await retryWithBackoff(async () => {
+      return await axios.post(
+        `${API_URL}/rest/v1/rpc/advance_delivery_status`,
+        { p_request_id: requestId, p_next_status: nextStatus },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+    });
+
+    const updated = Array.isArray(response.data) ? response.data[0] : response.data;
+    return (updated as DeliveryRequest) || null;
+  } catch (error: any) {
+    console.error('advanceDeliveryStatus error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    return null;
+  }
+}
+
+/**
  * Fetch delivery requests for the current user (or all if auth token has privileges).
  * Pass a simple filter string e.g. "auth_id=eq.<uuid>" or "status=eq.pending".
  */
