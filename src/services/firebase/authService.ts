@@ -255,7 +255,22 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
       if (userData) {
         console.log('User profile found:', userData);
         return {
-          user: userData as User,
+          // Mapped field by field rather than cast from the row: the live
+          // users table's own `id` is a bigint surrogate key, so returning
+          // the raw row would put that in User.id while sign-up and the
+          // fallback below put the auth UUID there. Anything comparing
+          // User.id against an auth uuid column (assigned_driver_id, say)
+          // then works or breaks depending on which path created the
+          // session.
+          user: {
+            id: authUser.id,
+            auth_id: authUser.id,
+            email: userData.email,
+            name: userData.name,
+            phone: userData.phone,
+            role: userData.role,
+            createdAt: userData.created_at,
+          },
           error: null,
           accessToken: accessToken || null,
           refreshToken: refreshToken || null,

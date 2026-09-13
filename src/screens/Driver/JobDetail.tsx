@@ -60,7 +60,7 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
     }, [fetchJob])
   );
 
-  const isMine = !!job && !!user && job.assigned_driver_id === user.id;
+  const isMine = !!job && !!user && job.assigned_driver_id === user.auth_id;
 
   const handleAccept = async () => {
     if (!accessToken) {

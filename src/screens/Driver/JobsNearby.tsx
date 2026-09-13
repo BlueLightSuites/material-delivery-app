@@ -30,8 +30,9 @@ interface JobsNearbyProps {
 }
 
 const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const [jobs, setJobs] = useState<DeliveryRequest[]>([]);
+  const [activeJobs, setActiveJobs] = useState<DeliveryRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -51,10 +52,22 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
 
     try {
       setLoading(true);
-      const data = await getDeliveryRequests(accessToken, 'status=eq.pending');
-      setJobs(data);
+      // Accepting a job flips it out of 'pending', so the open-jobs query
+      // alone would leave a driver with no route back to a job they've
+      // taken - and no way to reach the status actions on it.
+      const [pending, mine] = await Promise.all([
+        getDeliveryRequests(accessToken, 'status=eq.pending'),
+        user?.auth_id
+          ? getDeliveryRequests(
+              accessToken,
+              `assigned_driver_id=eq.${user.auth_id}&status=in.(assigned,in_transit)`
+            )
+          : Promise.resolve([]),
+      ]);
+      setJobs(pending);
+      setActiveJobs(mine);
     } catch (error) {
-      console.error('fetchJobs: Error fetching pending jobs:', error);
+      console.error('fetchJobs: Error fetching jobs:', error);
     } finally {
       setLoading(false);
     }
@@ -69,7 +82,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       fetchJobs();
-    }, [accessToken])
+    }, [accessToken, user?.auth_id])
   );
 
   const handleAccept = async (jobId: string) => {
@@ -177,6 +190,35 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
           </Text>
         </View>
 
+        {activeJobs.length > 0 && (
+          <View style={styles.activeSection}>
+            <Text style={styles.activeSectionTitle}>Your Active Jobs</Text>
+            {activeJobs.map((job) => (
+              <TouchableOpacity
+                key={job.id}
+                style={styles.activeCard}
+                onPress={() => job.id && navigation.navigate('JobDetail', { jobId: job.id })}
+              >
+                <View style={styles.activeCardHeader}>
+                  <Text style={styles.materialText}>{job.material_category}</Text>
+                  <Text style={styles.activeStatusText}>
+                    {job.status === 'in_transit' ? 'In transit' : 'Assigned'}
+                  </Text>
+                </View>
+                <Text style={styles.locationText} numberOfLines={1}>
+                  📍 {job.pickup_address}
+                </Text>
+                <Text style={styles.locationText} numberOfLines={1}>
+                  🎯 {job.dropoff_address}
+                </Text>
+                <Text style={styles.viewDetailsText}>
+                  {job.status === 'in_transit' ? 'Mark delivered →' : 'Start delivery →'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {loading && jobs.length === 0 ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#0066CC" />
@@ -245,6 +287,38 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#999999',
+  },
+  activeSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  activeSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#999999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  activeCard: {
+    backgroundColor: '#F5F9FF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#0066CC',
+    padding: 16,
+    marginBottom: 12,
+    gap: 4,
+  },
+  activeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  activeStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0066CC',
   },
   jobsList: {
     paddingHorizontal: 20,
