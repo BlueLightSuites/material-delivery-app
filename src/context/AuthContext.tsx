@@ -1,7 +1,13 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { User } from '../models/User';
 import { loadSession, saveSession, clearSession } from '../services/auth/sessionService';
 import { refreshSession } from '../services/firebase/authService';
+import { installAuthInterceptor, uninstallAuthInterceptor } from '../services/api/authInterceptor';
+
+// Supabase access tokens last an hour. Renew comfortably inside that so a
+// long-lived screen doesn't start 401ing mid-session.
+const REFRESH_INTERVAL_MS = 45 * 60 * 1000;
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +33,56 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // the sign-in screen for a moment even when the user is still logged in.
   const [isLoading, setIsLoading] = useState(true);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  // Held in a ref rather than state: renewing rotates it, and every
+  // rotation re-rendering the whole app (and re-running the effects that
+  // schedule the next renewal) would be needless churn.
+  const refreshTokenRef = useRef<string | null>(null);
+
+  /**
+   * Exchange the stored refresh token for a fresh access token, rotating
+   * the refresh token as Supabase hands back a new one. A failure here
+   * means the refresh token itself is dead, so the session is cleared and
+   * the user lands back on sign-in - retrying wouldn't help.
+   */
+  const renewAccessToken = useCallback(async (): Promise<string | null> => {
+    const currentRefreshToken = refreshTokenRef.current;
+    if (!currentRefreshToken) {
+      return null;
+    }
+
+    const refreshed = await refreshSession(currentRefreshToken);
+
+    if (refreshed.accessToken && refreshed.refreshToken) {
+      refreshTokenRef.current = refreshed.refreshToken;
+      setAccessToken(refreshed.accessToken);
+      setUser((currentUser) => {
+        if (currentUser) {
+          saveSession({
+            user: currentUser,
+            accessToken: refreshed.accessToken as string,
+            refreshToken: refreshed.refreshToken as string,
+          });
+        }
+        return currentUser;
+      });
+      return refreshed.accessToken;
+    } else {
+      console.warn('renewAccessToken: refresh token rejected, signing out');
+      refreshTokenRef.current = null;
+      setUser(null);
+      setAccessToken(null);
+      await clearSession();
+      return null;
+    }
+  }, []);
+
+  // Installed once for the life of the provider, not per token change:
+  // the handler reads the refresh token from a ref, so it never goes
+  // stale, and reinstalling would drop in-flight retries.
+  useEffect(() => {
+    installAuthInterceptor(renewAccessToken);
+    return () => uninstallAuthInterceptor();
+  }, [renewAccessToken]);
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -43,6 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const refreshed = await refreshSession(stored.refreshToken);
 
       if (refreshed.accessToken && refreshed.refreshToken) {
+        refreshTokenRef.current = refreshed.refreshToken;
         setUser(stored.user);
         setAccessToken(refreshed.accessToken);
         await saveSession({
@@ -61,7 +118,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     restoreSession();
   }, []);
 
+  // Two triggers, because neither covers the other's case. The timer
+  // handles an app left open past the token's lifetime; the foreground
+  // check handles an app that was backgrounded, where iOS suspends JS
+  // timers - which is exactly how a session expires unnoticed and every
+  // request comes back 401 the moment the user returns.
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    const interval = setInterval(renewAccessToken, REFRESH_INTERVAL_MS);
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        renewAccessToken();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [accessToken, renewAccessToken]);
+
   const login = async (nextUser: User, nextAccessToken: string, nextRefreshToken: string) => {
+    refreshTokenRef.current = nextRefreshToken;
     setUser(nextUser);
     setAccessToken(nextAccessToken);
     await saveSession({
@@ -72,6 +154,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = async () => {
+    refreshTokenRef.current = null;
     setUser(null);
     setAccessToken(null);
     await clearSession();
