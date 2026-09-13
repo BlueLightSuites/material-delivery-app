@@ -15,6 +15,7 @@ This app is meant to become an Uber-like marketplace for construction material d
 - **View my requests** (`src/screens/Contractor/RequestList.tsx`) — fetches the contractor's own requests from Supabase, filters by status, pull-to-refresh. Also fully wired, not mocked (older docs in this repo say otherwise — see "Docs vs. reality" below).
 - **Driver job feed + accept** (`src/screens/Driver/JobsNearby.tsx`) — lists all `delivery_requests` with `status = 'pending'`, pull-to-refresh, refetches on focus. Each job has an "Accept" button calling the `accept_delivery_request` RPC (`supabase/migrations/20260825003608_enable_driver_job_matching.sql`), which atomically assigns the driver only if the job is still pending; a job already taken by another driver shows an alert and refetches instead of erroring. No distance/radius filtering yet (no coordinates captured on requests — see gaps below). Tapping "View Details" goes to `JobDetail`, which is now real (below).
 - **Driver job detail + status advance** (`src/screens/Driver/JobDetail.tsx`) — loads the real request by id and carries it through its lifecycle with a single action that changes by state: Accept Job while pending, then Start Delivery (`assigned` → `in_transit`) and Mark Delivered (`in_transit` → `completed`). Status changes go through the `advance_delivery_status` RPC (`supabase/migrations/20260910000000_enable_driver_status_updates.sql`), which only moves status forward one step and only for the driver the job is assigned to. A transition that's no longer valid returns zero rows and refetches rather than erroring, matching how the accept flow handles losing a race.
+- **Location capture** (`src/services/geolocation/index.ts`) — pickup/dropoff addresses are geocoded on submit via the platform geocoder (`expo-location`, no API key or billing), populating the `pickup_lat/lng` and `dropoff_lat/lng` columns that previously sat empty. The driver feed reads the device position once on mount and labels each job with straight-line distance from pickup. Both are enrichments that degrade to null rather than failing: a geocode miss still submits the request, and a denied permission just hides distances. Requests created before this shipped have no coordinates and show no distance. Verified on the simulator with a custom location set.
 - **Session persistence** (`src/context/AuthContext.tsx`, `src/services/auth/sessionService.ts`) — `user`/`accessToken`/`refreshToken` are persisted via `expo-secure-store` on login and restored on launch (refreshing the access token first). Logout clears both context state and the stored session.
 
 ## What exists as UI shell only ("Coming soon")
@@ -29,7 +30,6 @@ These screens render and are reachable, but have no logic:
 
 Confirmed empty — not partially done, literally 0 lines of logic:
 
-- `src/services/geolocation/index.ts`
 - `src/hooks/useRealtimeLocation.ts`
 - `src/services/payments/index.ts`
 - `src/components/payments/PaymentForm.tsx`
@@ -42,8 +42,7 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 ## Gaps that block basic usability, not just "nice to have"
 
-- **No geolocation.** `expo-location` isn't a dependency. No permission strings are declared in `app.json` for iOS/Android. Pickup/dropoff are free-text addresses only — `pickup_lat/lng` and `dropoff_lat/lng` columns exist in the `delivery_requests` table but are never populated by the client.
-- **No live tracking.** Given no geolocation and an empty `Tracking.tsx`, there's no way for a contractor to see where their delivery is.
+- **No live tracking.** `Tracking.tsx` is still a placeholder, so there's no way for a contractor to see where their delivery is. Driver position is now readable (see location capture above) but nothing streams it anywhere — `src/hooks/useRealtimeLocation.ts` is still empty and Supabase Realtime is an unused dependency.
 - **No payments.** No Stripe/PayPal dependency, no pricing/estimate logic anywhere. Deliveries have no cost.
 - **No push notifications.** No `expo-notifications` dependency. A contractor whose request gets assigned/updated will never know unless they manually reopen the app and re-check the list.
 
@@ -52,7 +51,7 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 - **Schema is now tracked and applied.** All five migrations under `supabase/migrations/` are applied to the live project and recorded in its migration history — `npm run db:diff` shows Local matching Remote for every one, so this is verifiable rather than assumed. Apply new ones with `npm run db:push`; don't paste SQL into the dashboard editor, which is how the drift below happened in the first place.
 - **Known drift in the `users` table, deliberately left alone.** The live table predates migrations and stores `auth_id` as `TEXT` (not `UUID`) with a `bigint` primary key instead of `UUID`. The RLS policies cast to text to match. Retyping live columns is a separate, riskier migration and buys nothing today: `authService.ts` never reads `public.users.id` — the app's `User.id` is always the Supabase Auth UUID held in `auth_id`. The live table also carries unused `user_name` / `password_hash` columns from a pre-Supabase-Auth approach.
 - Supabase CLI commands need a database password in `.env.local` (gitignored). This works around [supabase/cli#5091](https://github.com/supabase/cli/issues/5091), where the CLI's automatic login role fails on older projects with a "permission denied to alter role" error. Note that `.env` itself **is** committed — it holds only the URL and anon key, which are public by design and shipped in the app bundle; the database password must never go there.
-- `app.json` has placeholder bundle identifiers (`com.yourcompany.materialdelivery`) and no permission descriptions, no EAS build config — not ready for a real device build or store submission.
+- `app.json` has placeholder bundle identifiers (`com.yourcompany.materialdelivery`) and no EAS build config — not ready for a real device build or store submission. Location permission strings are now declared there, but note the committed `ios/` project is what actually builds: its bundle id is `org.name.MaterialDelivery`, so `app.json` and the native project have already diverged. Running `expo prebuild` would overwrite the native one from these placeholders — pick a real identifier before anyone does that.
 
 ## Docs vs. reality
 

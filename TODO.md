@@ -31,10 +31,12 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 3. Location capture for requests (needed for any real matching later) ([#3](https://github.com/BlueLightSuites/material-delivery-app/issues/3))
 
-- **Status:** Not started
-- `pickup_lat/lng` and `dropoff_lat/lng` columns already exist in `delivery_requests` but nothing populates them.
-- Minimum viable: geocode the typed address on submit (a geocoding API call) rather than building full autocomplete yet — autocomplete is Phase 3 polish, but *some* coordinate is needed before "nearby" can mean anything.
-- Add `expo-location` dependency for the driver's current position (needed for "nearby" filtering and later for live tracking). Add the required permission strings to `app.json` (`NSLocationWhenInUseUsageDescription` for iOS, `ACCESS_FINE_LOCATION` for Android) — currently missing entirely.
+- **Status:** Done
+- **Service:** `src/services/geolocation/index.ts` — `geocodeAddress()`, `getCurrentPosition()`, `distanceInMiles()`. Geocoding uses the platform geocoder via `expo-location` (CoreLocation / Android Geocoder), so there's no API key or billing to set up; the tradeoff is that it misses on vague input, which is what full autocomplete (#13) would fix.
+- **Contractor:** `NewRequest.tsx` geocodes pickup and dropoff in parallel on submit and populates the four lat/lng columns. A geocode miss submits with nulls rather than blocking the request — coordinates are an enrichment, not a requirement.
+- **Driver:** `JobsNearby.tsx` reads the device position once on mount (not on every focus, so a declined prompt isn't re-prompted) and labels each job with straight-line distance from pickup. Requests created before this shipped have no coordinates and show no distance rather than a wrong one.
+- **Permissions:** declared in `app.json` for both platforms, and `NSLocationWhenInUseUsageDescription` added directly to `ios/MaterialDelivery/Info.plist` — the committed native project is what actually builds, and iOS crashes outright if a location request finds no usage string. This also satisfies the store-submission prerequisite ([#30](https://github.com/BlueLightSuites/material-delivery-app/issues/30)).
+- **Not done here:** distance is displayed, not used for filtering or sorting, and the feed still fetches every pending request regardless of distance. Real radius-based matching needs a server-side query (PostGIS or a bounding-box filter) rather than client-side math over the whole table.
 
 ### 4. Driver-side request detail + active job ([#4](https://github.com/BlueLightSuites/material-delivery-app/issues/4))
 
@@ -113,6 +115,6 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1, 2, 4, 6, and 7 are done — driver job feed, accept a job, job detail with status advance, `users` migration, and session persistence. All migrations are applied to the live project and tracked by the Supabase CLI; `npm run db:diff` verifies Local matches Remote, and new schema changes go through `npm run db:push` rather than the dashboard SQL editor.
+Items 1, 2, 3, 4, 6, and 7 are done — driver job feed, accept a job, location capture, job detail with status advance, `users` migration, and session persistence. All migrations are applied to the live project and tracked by the Supabase CLI; `npm run db:diff` verifies Local matches Remote, and new schema changes go through `npm run db:push` rather than the dashboard SQL editor.
 
-Next up: **item 3 (location capture)**, now the last open piece of Phase 1 and the one that unblocks the most — it's what makes "nearby" mean anything in the driver feed, and it's a prerequisite for item 5 (real tracking screen) and for the store-submission location permission strings. After that, item 5 closes Phase 1 out.
+Next up: **item 5 (contractor tracking screen)**, the last open piece of Phase 1. There's now real state for it to show — a job moves `pending` → `assigned` → `in_transit` → `completed`, and both the request and the driver have coordinates — so a useful tracking screen no longer has to wait on live GPS streaming (that's Phase 2, [#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8)). `src/components/map/MapView.tsx` is still an empty file despite `react-native-maps` being installed, and it's where the map belongs.
