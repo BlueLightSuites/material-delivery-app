@@ -57,6 +57,19 @@ export async function getCurrentPosition(): Promise<Coordinates | null> {
   }
 }
 
+/**
+ * Assumed average speed for a loaded delivery vehicle on local roads,
+ * including lights and turns. A guess, not a measurement - which is why
+ * callers present the result as "about N min" rather than a clock time.
+ * A real road-network ETA needs a routing API (key + per-request cost).
+ */
+const AVERAGE_SPEED_MPH = 30;
+
+/** Rough minutes away, straight-line. Never returns 0 - "about 0 min" reads as broken. */
+export function estimateMinutesAway(distanceMiles: number): number {
+  return Math.max(1, Math.round((distanceMiles / AVERAGE_SPEED_MPH) * 60));
+}
+
 const EARTH_RADIUS_MILES = 3958.8;
 
 /**

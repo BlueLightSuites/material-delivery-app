@@ -42,6 +42,9 @@ export interface DeliveryRequest {
   notes?: string;
   status?: 'pending' | 'assigned' | 'in_transit' | 'completed' | string;
   assigned_driver_id?: string | null;
+  driver_lat?: number | null;
+  driver_lng?: number | null;
+  driver_location_updated_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -211,6 +214,48 @@ export async function advanceDeliveryStatus(
       message: error?.message,
     });
     return null;
+  }
+}
+
+/**
+ * Report the driver's current position for a job they're assigned to,
+ * via the `report_driver_location` RPC (see
+ * sql/20260913000000_add_driver_location_tracking.sql). The RPC ignores
+ * the call unless the caller is the assigned driver and the job is still
+ * in progress, so a stale timer firing after delivery is a no-op rather
+ * than an error. Returns false when nothing was updated.
+ */
+export async function reportDriverLocation(
+  accessToken: string,
+  requestId: string,
+  lat: number,
+  lng: number
+): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${API_URL}/rest/v1/rpc/report_driver_location`,
+      { p_request_id: requestId, p_lat: lat, p_lng: lng },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const updated = Array.isArray(response.data) ? response.data[0] : response.data;
+    return !!updated;
+  } catch (error: any) {
+    // Deliberately not retried: another position is coming in a few
+    // seconds anyway, and a backed-up queue of stale fixes is worse than
+    // a skipped one.
+    console.error('reportDriverLocation error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    return false;
   }
 }
 

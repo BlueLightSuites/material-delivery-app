@@ -20,6 +20,7 @@ import {
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { useDriverLocationReporter } from '../../hooks/useDriverLocationReporter';
 
 type JobDetailNavigationProp = StackNavigationProp<MainStackParamList, 'JobDetail'>;
 type JobDetailRouteProp = RouteProp<MainStackParamList, 'JobDetail'>;
@@ -61,6 +62,14 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
   );
 
   const isMine = !!job && !!user && job.assigned_driver_id === user.auth_id;
+
+  // Only while this driver actually holds an in-progress job - the RPC
+  // enforces the same condition server-side, so a stale report is
+  // rejected rather than trusted.
+  useDriverLocationReporter(
+    jobId,
+    isMine && (job?.status === 'assigned' || job?.status === 'in_transit')
+  );
 
   const handleAccept = async () => {
     if (!accessToken) {

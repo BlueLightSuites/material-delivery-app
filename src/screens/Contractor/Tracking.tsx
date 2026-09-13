@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -22,6 +22,15 @@ import {
   isStatusReached,
 } from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
+import { distanceInMiles, estimateMinutesAway } from '../../services/geolocation';
+
+const POLL_INTERVAL_MS = 10000;
+
+// A fix older than this is stale enough that presenting it as "where the
+// driver is" would be misleading - the app was probably backgrounded, or
+// the driver lost signal.
+const STALE_LOCATION_MS = 2 * 60 * 1000;
 
 type TrackingNavigationProp = StackNavigationProp<MainStackParamList, 'Tracking'>;
 type TrackingRouteProp = RouteProp<MainStackParamList, 'Tracking'>;
@@ -69,6 +78,51 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
     }, [fetchRequest])
   );
 
+  const isLive = request?.status === 'assigned' || request?.status === 'in_transit';
+
+  // Live updates, with polling as a fallback rather than an either/or.
+  // Realtime is the better experience when it connects, but this app
+  // otherwise avoids the Supabase SDK on Hermes grounds, so a channel
+  // that fails must degrade to something that works instead of leaving a
+  // screen that silently never updates. Polling only starts if the
+  // subscription reports a problem.
+  const [realtimeFailed, setRealtimeFailed] = useState(false);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!accessToken || !isLive || realtimeFailed) {
+      return;
+    }
+
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      subscription = subscribeToDeliveryRequest(
+        accessToken,
+        requestId,
+        (row) => setRequest((current) => ({ ...current, ...row } as DeliveryRequest)),
+        () => setRealtimeFailed(true)
+      );
+    } catch (error) {
+      console.error('Tracking: realtime subscribe threw, falling back to polling', error);
+      setRealtimeFailed(true);
+    }
+
+    return () => subscription?.unsubscribe();
+  }, [accessToken, requestId, isLive, realtimeFailed]);
+
+  useEffect(() => {
+    if (!isLive || !realtimeFailed) {
+      return;
+    }
+
+    pollTimer.current = setInterval(fetchRequest, POLL_INTERVAL_MS);
+    return () => {
+      if (pollTimer.current) {
+        clearInterval(pollTimer.current);
+      }
+    };
+  }, [isLive, realtimeFailed, fetchRequest]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchRequest();
@@ -114,6 +168,38 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
 
   const accent = statusColor(request.status);
   const lastUpdated = formatTimestamp(request.updated_at || request.created_at);
+
+  // Needs the dropoff coordinates as well as the driver's: requests
+  // created before geocoding shipped have no dropoff fix, and there's no
+  // honest distance to show without one.
+  const driverLocation = (() => {
+    if (
+      !isLive ||
+      request.driver_lat == null ||
+      request.driver_lng == null ||
+      request.dropoff_lat == null ||
+      request.dropoff_lng == null
+    ) {
+      return null;
+    }
+
+    const reportedAt = request.driver_location_updated_at
+      ? new Date(request.driver_location_updated_at)
+      : null;
+    const stale = !reportedAt || Date.now() - reportedAt.getTime() > STALE_LOCATION_MS;
+
+    const milesAway = distanceInMiles(
+      { lat: request.driver_lat, lng: request.driver_lng },
+      { lat: request.dropoff_lat, lng: request.dropoff_lng }
+    );
+
+    return {
+      stale,
+      milesAway,
+      minutesAway: estimateMinutesAway(milesAway),
+      updatedLabel: formatTimestamp(request.driver_location_updated_at || undefined) || 'unknown',
+    };
+  })();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -170,6 +256,27 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             );
           })}
         </View>
+
+        {driverLocation && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Driver Location</Text>
+            {driverLocation.stale ? (
+              <Text style={styles.staleText}>
+                Last known position was {driverLocation.updatedLabel}. The driver's app may be
+                closed or out of signal.
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.etaText}>About {driverLocation.minutesAway} min away</Text>
+                <Text style={styles.etaSubtext}>
+                  {driverLocation.milesAway.toFixed(1)} mi from the dropoff, straight line —
+                  actual driving time will be longer.
+                </Text>
+                <Text style={styles.updatedText}>Updated {driverLocation.updatedLabel}</Text>
+              </>
+            )}
+          </View>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Route</Text>
@@ -287,6 +394,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 14,
+  },
+  etaText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  etaSubtext: {
+    fontSize: 13,
+    color: '#666666',
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  staleText: {
+    fontSize: 13,
+    color: '#8A6D3B',
+    lineHeight: 19,
   },
   timelineRow: {
     flexDirection: 'row',
