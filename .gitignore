@@ -61,3 +61,5 @@ web-build/
 dist/
 
 # @end expo-cli
+# Local secrets (DB password for Supabase CLI) - never commit
+.env.local

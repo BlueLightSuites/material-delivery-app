@@ -24,7 +24,7 @@ Without this phase, a driver account is useless and the app is just a contractor
 ### 2. Accept a job — the actual matching mechanism ([#2](https://github.com/BlueLightSuites/material-delivery-app/issues/2))
 
 - **Status:** Done
-- **Migration:** `sql/enable_driver_job_matching.sql` — adds a `SECURITY DEFINER` RPC function `accept_delivery_request(p_request_id)` that atomically sets `assigned_driver_id`/`status` only on a still-`pending` row, so no broad UPDATE policy had to be opened up for drivers (the function itself is the security boundary — it can't be used to edit request contents).
+- **Migration:** `supabase/migrations/20260825003608_enable_driver_job_matching.sql` — adds a `SECURITY DEFINER` RPC function `accept_delivery_request(p_request_id)` that atomically sets `assigned_driver_id`/`status` only on a still-`pending` row, so no broad UPDATE policy had to be opened up for drivers (the function itself is the security boundary — it can't be used to edit request contents).
 - **Bug fix included here:** that same migration also adds the SELECT policies the driver job feed (#1) actually needed to return any rows at all — the original RLS only let a request's owner see it, so `JobsNearby` was silently returning zero jobs for every driver until now. Fixed with a "pending requests are visible to any authenticated user" policy plus "assigned driver can see their own assignment."
 - **Client:** `acceptDeliveryRequest()` in `src/services/api/deliveryRequests.ts` calls the RPC. Wired to an "Accept" button in `src/screens/Driver/JobsNearby.tsx`; on success the job drops out of the local list, on "already taken" (RPC returns zero rows) it shows an alert and refetches.
 - **Not run yet:** the SQL migration file is written but has not been applied to the live Supabase project in this checkout — run it in the Supabase SQL editor (or via migration tooling) before this will work end-to-end.
@@ -52,7 +52,7 @@ Without this phase, a driver account is useless and the app is just a contractor
 ### 6. `users` table migration ([#6](https://github.com/BlueLightSuites/material-delivery-app/issues/6))
 
 - **Status:** Done
-- **Migration:** `sql/create_users_table.sql` — `id`, `auth_id` (unique FK to `auth.users`), `email`, `name`, `phone`, `role`, timestamps, matching the shape `authService.ts` actually reads/writes. RLS: a user can read/insert/update only their own row.
+- **Migration:** `supabase/migrations/20260825003703_create_users_table.sql` — `id`, `auth_id` (unique FK to `auth.users`), `email`, `name`, `phone`, `role`, timestamps, matching the shape `authService.ts` actually reads/writes. RLS: a user can read/insert/update only their own row.
 - **Deliberately not included:** letting a contractor/driver read each other's public profile fields (e.g. a contractor seeing their assigned driver's name) once matched via `delivery_requests.assigned_driver_id`. Left for when that UI (item 4/5) actually needs it rather than opened up speculatively — see the comment in the migration.
 - **Not run yet**, same as item 2's migration — apply via the Supabase SQL editor or migration tooling before relying on it.
 
@@ -110,4 +110,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1, 2, 6, and 7 are done in code — driver job feed, accept a job, `users` migration, and session persistence. **None of the three SQL migrations in `sql/` are confirmed applied to the live Supabase project** — that needs to happen before any of the matching/accept work actually works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next up: item 3 (location capture) and item 4 (driver-side job detail/active job), which unblock item 5 (real tracking screen).
+Items 1, 2, 6, and 7 are done in code — driver job feed, accept a job, `users` migration, and session persistence. **None of the SQL migrations in `supabase/migrations/` are confirmed applied to the live Supabase project** — that needs to happen before any of the matching/accept work actually works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next up: item 3 (location capture) and item 4 (driver-side job detail/active job), which unblock item 5 (real tracking screen).

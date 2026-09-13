@@ -1,0 +1,17 @@
+-- Drop the legacy permissive INSERT policy on users.
+--
+-- "Enable insert for authenticated users only" was created by hand in the
+-- Supabase dashboard before this project had migrations. Its check is only
+-- "is the caller authenticated" - it never ties the row's auth_id to the
+-- caller's own uid, so any signed-in user could insert a profile row
+-- claiming someone else's auth_id. Postgres OR's permissive policies
+-- together, so leaving this in place would defeat the narrower "Users can
+-- create their own profile" policy added in
+-- 20260825003703_create_users_table.sql.
+--
+-- Nothing depends on the loose policy: authService.ts's signup insert
+-- always sends the caller's own authUser.id as auth_id under the caller's
+-- own access token, which satisfies the stricter policy by itself. This
+-- was confirmed by running the real signup flow against the live project
+-- with both policies present before dropping this one.
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON users;
