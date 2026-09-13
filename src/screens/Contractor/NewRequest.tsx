@@ -17,6 +17,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { createDeliveryRequest } from '../../services/api/deliveryRequests';
+import { geocodeAddress } from '../../services/geolocation';
 
 type NewRequestNavigationProp = StackNavigationProp<MainStackParamList, 'NewRequest'>;
 
@@ -135,10 +136,22 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
         return;
       }
 
+      // Enrichment, not a requirement: a request with a free-text address
+      // and no coordinates is still valid, so a geocode miss must not
+      // block the submit. It only costs "nearby" filtering on that row.
+      const [pickup, dropoff] = await Promise.all([
+        geocodeAddress(form.pickupAddress),
+        geocodeAddress(form.dropoffAddress),
+      ]);
+
       const payload = {
         auth_id: user.auth_id,
         pickup_address: form.pickupAddress,
+        pickup_lat: pickup?.lat,
+        pickup_lng: pickup?.lng,
         dropoff_address: form.dropoffAddress,
+        dropoff_lat: dropoff?.lat,
+        dropoff_lng: dropoff?.lng,
         material_category: form.materialCategory,
         material_weight: Number(form.materialWeight) || 0,
         material_unit: form.materialUnit,

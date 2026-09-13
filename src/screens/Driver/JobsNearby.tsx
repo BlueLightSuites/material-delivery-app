@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -21,6 +21,7 @@ import {
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { getCurrentPosition, distanceInMiles, Coordinates } from '../../services/geolocation';
 
 type JobsNearbyNavigationProp = StackNavigationProp<MainStackParamList, 'JobsNearby'>;
 
@@ -34,6 +35,14 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [driverPosition, setDriverPosition] = useState<Coordinates | null>(null);
+
+  // Asked for once on mount rather than on every focus, so a driver who
+  // declines the permission prompt isn't re-prompted every time they come
+  // back to the feed. Null just means distances are hidden.
+  useEffect(() => {
+    getCurrentPosition().then(setDriverPosition);
+  }, []);
 
   const fetchJobs = async () => {
     if (!accessToken) {
@@ -88,6 +97,16 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
     }
   };
 
+  // Only requests created after location capture shipped carry coordinates,
+  // so older rows simply show no distance rather than a wrong one.
+  const pickupDistance = (item: DeliveryRequest): string | null => {
+    if (!driverPosition || item.pickup_lat == null || item.pickup_lng == null) {
+      return null;
+    }
+    const miles = distanceInMiles(driverPosition, { lat: item.pickup_lat, lng: item.pickup_lng });
+    return miles < 10 ? `${miles.toFixed(1)} mi away` : `${Math.round(miles)} mi away`;
+  };
+
   const renderJobCard = ({ item }: { item: DeliveryRequest }) => (
     <View style={styles.jobCard}>
       <View style={styles.cardHeader}>
@@ -103,6 +122,9 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
           <Text style={styles.locationText} numberOfLines={1}>
             {item.pickup_address}
           </Text>
+          {pickupDistance(item) && (
+            <Text style={styles.distanceText}>{pickupDistance(item)}</Text>
+          )}
         </View>
         <View style={styles.locationRow}>
           <Text style={styles.locationIcon}>🎯</Text>
@@ -270,6 +292,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666666',
     flex: 1,
+  },
+  distanceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0066CC',
+    marginLeft: 8,
   },
   trailerBadge: {
     alignSelf: 'flex-start',
