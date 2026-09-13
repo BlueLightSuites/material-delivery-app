@@ -48,10 +48,11 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 5. Contractor tracking screen — make it real ([#5](https://github.com/BlueLightSuites/material-delivery-app/issues/5))
 
-- **Status:** Not started
-- File: `src/screens/Contractor/Tracking.tsx` (currently just echoes the request ID).
-- Fetch the request by id, show current status, and once "driver location" exists (Phase 1 item 3 + Phase 2 live location), show it on a map.
-- `src/components/map/MapView.tsx` is an empty file despite `react-native-maps` being installed — this is where a real map component belongs.
+- **Status:** Done
+- **File:** `src/screens/Contractor/Tracking.tsx` — status badge, a plain-language line for the current step, and a four-step progress timeline, plus route, trailer requirement, request time, and notes. Refetches on focus and pull-to-refresh.
+- **Shared:** `src/models/deliveryStatus.ts` holds the status vocabulary (order, labels, colors, contractor-facing descriptions). `RequestList` previously had its own inline copy of the colors and labels; both screens now read from the one module, so a status can't be orange on one screen and blue on the other. `RequestList`'s filter tabs are derived from that same order, which is how `in_transit` ended up with no tab in the first place.
+- **Deliberately no map yet.** With no driver location on the wire, a map could only show pickup and dropoff — two fixed points the contractor typed in themselves. `MapView.tsx` stays empty until there's something moving to plot, so it gets built once against live positions rather than built for static pins and rebuilt later. That's part of [#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8).
+- **Not included:** live updates. A contractor sitting on the screen sees stale data until they refresh.
 
 ### 6. `users` table migration ([#6](https://github.com/BlueLightSuites/material-delivery-app/issues/6))
 
@@ -115,6 +116,8 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1, 2, 3, 4, 6, and 7 are done — driver job feed, accept a job, location capture, job detail with status advance, `users` migration, and session persistence. All migrations are applied to the live project and tracked by the Supabase CLI; `npm run db:diff` verifies Local matches Remote, and new schema changes go through `npm run db:push` rather than the dashboard SQL editor.
+**Phase 1 is closed.** All seven items are done, and the loop has been walked end to end on two simulators: a contractor posts a request, a driver sees it with a distance, accepts it, advances it through to delivered, and the contractor watches the status move.
 
-Next up: **item 5 (contractor tracking screen)**, the last open piece of Phase 1. There's now real state for it to show — a job moves `pending` → `assigned` → `in_transit` → `completed`, and both the request and the driver have coordinates — so a useful tracking screen no longer has to wait on live GPS streaming (that's Phase 2, [#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8)). `src/components/map/MapView.tsx` is still an empty file despite `react-native-maps` being installed, and it's where the map belongs.
+Two things that walk exposed, both now fixed, both worth remembering as a pattern: accepting a job removed it from the only list that could reach it, and `User.id` meant the auth UUID on some sign-in paths and the `users` table's bigint key on others. Neither showed up in code review or type-checking — the first because every piece worked in isolation, the second because a `userData as User` cast asserted away the mismatch. Walking the actual user path found both.
+
+Next up is Phase 2, where **[#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8) (live driver location)** is the natural first move: it's what makes tracking live rather than pull-to-refresh, and it's the prerequisite for the map that `src/components/map/MapView.tsx` is still an empty placeholder for. Note it needs schema work too — nothing currently stores a driver's position.
