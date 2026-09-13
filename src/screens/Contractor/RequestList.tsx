@@ -272,7 +272,6 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         items={[
           { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
           { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
-          { key: 'tracking', icon: '🚚', label: 'Tracking', onPress: () => navigation.navigate('Tracking', { requestId: '1' }) },
           { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
         ]}
       />
