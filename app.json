@@ -1,50 +1,53 @@
 {
-    "expo": {
-      "name": "Material Delivery",
-      "slug": "material-delivery-app",
-      "version": "1.0.0",
-      "sdkVersion": "48.0.0",
-      "orientation": "portrait",
-      "icon": "./assets/icon.png",
-      "splash": {
-        "image": "./assets/splash.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#ffffff"
+  "expo": {
+    "name": "Material Delivery",
+    "slug": "material-delivery-app",
+    "owner": "blue-light-suites-llc",
+    "version": "1.0.0",
+    "sdkVersion": "48.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bluelightsuites.materialdelivery",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Material Delivery uses your location to show delivery jobs near you and to share your position with the contractor while you're delivering their materials."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
-      "assetBundlePatterns": [
-        "**/*"
-      ],
-      "updates": {
-        "fallbackToCacheTimeout": 0
-      },
-      "platforms": [
-        "ios",
-        "android",
-        "web"
-      ],
-      "ios": {
-        "supportsTablet": true,
-        "bundleIdentifier": "com.bluelightsuites.materialdelivery",
-        "infoPlist": {
-          "NSLocationWhenInUseUsageDescription": "Material Delivery uses your location to show delivery jobs near you and to share your position with the contractor while you're delivering their materials."
-        }
-      },
-      "android": {
-        "adaptiveIcon": {
-          "foregroundImage": "./assets/adaptive-icon.png",
-          "backgroundColor": "#FFFFFF"
-        },
-        "package": "com.bluelightsuites.materialdelivery",
-        "permissions": [
-          "ACCESS_FINE_LOCATION",
-          "ACCESS_COARSE_LOCATION"
-        ]
-      },
-      "web": {
-        "favicon": "./assets/favicon.png"
-      },
-      "extra": {
-        
+      "package": "com.bluelightsuites.materialdelivery",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "338fc04c-0b99-437c-bcdd-c272cf6b6250"
       }
     }
   }
+}
