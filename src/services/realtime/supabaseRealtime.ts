@@ -15,6 +15,12 @@ import { SUPABASE_CONFIG } from '../../config/supabaseConfig';
  * websocket. So the SDK is introduced deliberately and narrowly, with
  * auth persistence turned off so it can't race the existing session
  * handling in AuthContext/sessionService for ownership of the session.
+ *
+ * Verified 2026-09-13 on the iOS simulator with Hermes enabled: the
+ * channel connects and updates arrive immediately, so the polling
+ * fallback never engaged. The old Hermes caution doesn't apply to this
+ * path with react-native-url-polyfill in place. That's evidence from one
+ * platform, not a guarantee - Android is untested, so the fallback stays.
  */
 let client: SupabaseClient | null = null;
 
