@@ -1,10 +1,10 @@
 # Roadmap to a usable Uber-like delivery platform
 
-**Last updated:** 2026-08-25
+**Last updated:** 2026-09-12
 Every item below is tracked as a GitHub issue in [BlueLightSuites/material-delivery-app](https://github.com/BlueLightSuites/material-delivery-app/issues), labeled `phase-1`/`phase-2`/`phase-3`. Issue numbers are linked inline.
 See [STATUS.md](./STATUS.md) first — it's the verified inventory of what's actually built. This file is the plan for what's left, ordered by what's actually blocking a working product.
 
-The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. Today only the first step (posting a request) is real. Everything from "a driver sees it" onward doesn't exist yet.
+The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. Today that loop works apart from "nearby" and "track it live" — a contractor can post, a driver can see, accept, and complete a job, all against the live database. What's missing is location (so "nearby" means nothing yet), any tracking view for the contractor, and payment.
 
 Phases are ordered by dependency, not by size — Phase 1 is the whole reason this is a two-sided marketplace and not just a form. Don't start Phase 2 or 3 work before Phase 1 closes the loop.
 
@@ -27,7 +27,7 @@ Without this phase, a driver account is useless and the app is just a contractor
 - **Migration:** `supabase/migrations/20260825003608_enable_driver_job_matching.sql` — adds a `SECURITY DEFINER` RPC function `accept_delivery_request(p_request_id)` that atomically sets `assigned_driver_id`/`status` only on a still-`pending` row, so no broad UPDATE policy had to be opened up for drivers (the function itself is the security boundary — it can't be used to edit request contents).
 - **Bug fix included here:** that same migration also adds the SELECT policies the driver job feed (#1) actually needed to return any rows at all — the original RLS only let a request's owner see it, so `JobsNearby` was silently returning zero jobs for every driver until now. Fixed with a "pending requests are visible to any authenticated user" policy plus "assigned driver can see their own assignment."
 - **Client:** `acceptDeliveryRequest()` in `src/services/api/deliveryRequests.ts` calls the RPC. Wired to an "Accept" button in `src/screens/Driver/JobsNearby.tsx`; on success the job drops out of the local list, on "already taken" (RPC returns zero rows) it shows an alert and refetches.
-- **Not run yet:** the SQL migration file is written but has not been applied to the live Supabase project in this checkout — run it in the Supabase SQL editor (or via migration tooling) before this will work end-to-end.
+- **Applied to the live project** and tracked in its migration history.
 
 ### 3. Location capture for requests (needed for any real matching later) ([#3](https://github.com/BlueLightSuites/material-delivery-app/issues/3))
 
@@ -38,9 +38,11 @@ Without this phase, a driver account is useless and the app is just a contractor
 
 ### 4. Driver-side request detail + active job ([#4](https://github.com/BlueLightSuites/material-delivery-app/issues/4))
 
-- **Status:** Not started
-- `src/screens/Driver/JobDetail.tsx` is a placeholder. Needs real request data (fetch by id), Accept action (see item 2), and status-advance actions once accepted (arrived at pickup → picked up → en route → delivered), each a status update on the row.
-- Needs a way for the driver to see their current active job after accepting — right now there's no "my active jobs" list on the driver side at all.
+- **Status:** Done
+- **File:** `src/screens/Driver/JobDetail.tsx` — fetches the real request by id via `getDeliveryRequestById()` and shows status, route, material/weight, trailer requirement, and notes. One action button that changes by state: Accept Job while `pending`, Start Delivery (`assigned` → `in_transit`), Mark Delivered (`in_transit` → `completed`).
+- **Migration:** `supabase/migrations/20260910000000_enable_driver_status_updates.sql` — adds `advance_delivery_status(p_request_id, p_next_status)`, a `SECURITY DEFINER` RPC following the same pattern as item 2's accept function. The existing UPDATE policy only matches `auth_id = auth.uid()` (the contractor who created the request), so a driver has no UPDATE access at all; rather than widen that and let a driver rewrite pickup/dropoff/material fields on a job merely assigned to them, the function moves `status` forward exactly one valid step and only for the assigned driver. Applied to the live project.
+- Statuses used are the existing `pending` / `assigned` / `in_transit` / `completed` values already in the schema, rather than the finer-grained arrived/loaded steps sketched earlier — those would need new schema and aren't needed to close the loop.
+- Still open: there's no "my active jobs" list on the driver side; a driver reaches an accepted job by tapping through from the feed. Worth its own issue if it becomes friction.
 
 ### 5. Contractor tracking screen — make it real ([#5](https://github.com/BlueLightSuites/material-delivery-app/issues/5))
 
@@ -54,7 +56,8 @@ Without this phase, a driver account is useless and the app is just a contractor
 - **Status:** Done
 - **Migration:** `supabase/migrations/20260825003703_create_users_table.sql` — `id`, `auth_id` (unique FK to `auth.users`), `email`, `name`, `phone`, `role`, timestamps, matching the shape `authService.ts` actually reads/writes. RLS: a user can read/insert/update only their own row.
 - **Deliberately not included:** letting a contractor/driver read each other's public profile fields (e.g. a contractor seeing their assigned driver's name) once matched via `delivery_requests.assigned_driver_id`. Left for when that UI (item 4/5) actually needs it rather than opened up speculatively — see the comment in the migration.
-- **Not run yet**, same as item 2's migration — apply via the Supabase SQL editor or migration tooling before relying on it.
+- **Applied to the live project**, which surfaced real drift: the pre-existing table stores `auth_id` as `TEXT` and uses a `bigint` primary key, so the policies had to cast (`auth_id = auth.uid()::text`) and the missing `phone` / `updated_at` columns had to be added explicitly. See the migration's header comment and STATUS.md for why the column types are left as they are.
+- A separate migration (`20260912000000_drop_legacy_users_insert_policy.sql`) removes a dashboard-created INSERT policy that only checked whether the caller was authenticated — as a permissive policy it was OR'd with the narrower own-profile check, so any signed-in user could have inserted a row claiming someone else's `auth_id`.
 
 ### 7. Session persistence ([#7](https://github.com/BlueLightSuites/material-delivery-app/issues/7))
 
@@ -110,4 +113,6 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ## Suggested next step
 
-Items 1, 2, 6, and 7 are done in code — driver job feed, accept a job, `users` migration, and session persistence. **None of the SQL migrations in `supabase/migrations/` are confirmed applied to the live Supabase project** — that needs to happen before any of the matching/accept work actually works end-to-end; it's a manual step (Supabase SQL editor or migration tooling), not something further coding fixes. Next up: item 3 (location capture) and item 4 (driver-side job detail/active job), which unblock item 5 (real tracking screen).
+Items 1, 2, 4, 6, and 7 are done — driver job feed, accept a job, job detail with status advance, `users` migration, and session persistence. All migrations are applied to the live project and tracked by the Supabase CLI; `npm run db:diff` verifies Local matches Remote, and new schema changes go through `npm run db:push` rather than the dashboard SQL editor.
+
+Next up: **item 3 (location capture)**, now the last open piece of Phase 1 and the one that unblocks the most — it's what makes "nearby" mean anything in the driver feed, and it's a prerequisite for item 5 (real tracking screen) and for the store-submission location permission strings. After that, item 5 closes Phase 1 out.
