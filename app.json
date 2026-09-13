@@ -24,7 +24,7 @@
       ],
       "ios": {
         "supportsTablet": true,
-        "bundleIdentifier": "com.yourcompany.materialdelivery",
+        "bundleIdentifier": "com.bluelightsuites.materialdelivery",
         "infoPlist": {
           "NSLocationWhenInUseUsageDescription": "Material Delivery uses your location to show delivery jobs near you and to share your position with the contractor while you're delivering their materials."
         }
@@ -34,7 +34,7 @@
           "foregroundImage": "./assets/adaptive-icon.png",
           "backgroundColor": "#FFFFFF"
         },
-        "package": "com.yourcompany.materialdelivery",
+        "package": "com.bluelightsuites.materialdelivery",
         "permissions": [
           "ACCESS_FINE_LOCATION",
           "ACCESS_COARSE_LOCATION"

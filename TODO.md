@@ -115,7 +115,7 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 - Unit + integration test coverage (currently none beyond the Jest config existing). ([#18](https://github.com/BlueLightSuites/material-delivery-app/issues/18))
 - Social auth (Google/Apple). ([#19](https://github.com/BlueLightSuites/material-delivery-app/issues/19))
 - Dark mode, accessibility pass, offline mode. ([#20](https://github.com/BlueLightSuites/material-delivery-app/issues/20))
-- `app.json` production readiness: real bundle identifiers (currently `com.yourcompany.materialdelivery` placeholders), app icons, EAS build config. ([#21](https://github.com/BlueLightSuites/material-delivery-app/issues/21))
+- `app.json` production readiness: app icons and EAS build config. Bundle identifiers are done — `com.bluelightsuites.materialdelivery` across `app.json` and both Xcode configs. ([#21](https://github.com/BlueLightSuites/material-delivery-app/issues/21))
 
 ---
 
