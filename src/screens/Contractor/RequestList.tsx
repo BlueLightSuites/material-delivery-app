@@ -16,9 +16,21 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { getDeliveryRequests, DeliveryRequest as DBDeliveryRequest } from '../../services/api/deliveryRequests';
+import {
+  statusColor,
+  statusLabel,
+  DELIVERY_STATUS_ORDER,
+  DeliveryStatus,
+} from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type RequestListNavigationProp = StackNavigationProp<MainStackParamList, 'RequestList'>;
+
+// Derived from the status vocabulary rather than hand-listed, so a status
+// added later can't silently end up with no tab to appear under.
+const FILTER_TABS = ['all', ...DELIVERY_STATUS_ORDER] as const;
+
+type FilterTab = 'all' | DeliveryStatus;
 
 interface RequestListProps {
   navigation: RequestListNavigationProp;
@@ -26,9 +38,7 @@ interface RequestListProps {
 
 const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
   const { accessToken, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'assigned' | 'completed'>(
-    'all'
-  );
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [requests, setRequests] = useState<DBDeliveryRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,40 +84,6 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
     }, [accessToken, user?.auth_id])
   );
 
-  const getStatusColor = (
-    status: 'pending' | 'assigned' | 'in_transit' | 'completed'
-  ): string => {
-    switch (status) {
-      case 'pending':
-        return '#FFA500';
-      case 'assigned':
-        return '#0066CC';
-      case 'in_transit':
-        return '#7C3AED';
-      case 'completed':
-        return '#10B981';
-      default:
-        return '#999999';
-    }
-  };
-
-  const getStatusLabel = (
-    status: 'pending' | 'assigned' | 'in_transit' | 'completed'
-  ): string => {
-    switch (status) {
-      case 'pending':
-        return 'Pending';
-      case 'assigned':
-        return 'Assigned';
-      case 'in_transit':
-        return 'In Transit';
-      case 'completed':
-        return 'Completed';
-      default:
-        return 'Unknown';
-    }
-  };
-
   const filteredRequests = requests.filter((req) => {
     if (activeTab === 'all') return true;
     return req.status === activeTab;
@@ -124,22 +100,22 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
           <View
             style={[
               styles.statusBadge,
-              { backgroundColor: getStatusColor(item.status as any) + '20' },
+              { backgroundColor: statusColor(item.status) + '20' },
             ]}
           >
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: getStatusColor(item.status as any) },
+                { backgroundColor: statusColor(item.status) },
               ]}
             />
             <Text
               style={[
                 styles.statusText,
-                { color: getStatusColor(item.status as any) },
+                { color: statusColor(item.status) },
               ]}
             >
-              {getStatusLabel(item.status as any)}
+              {statusLabel(item.status)}
             </Text>
           </View>
         </View>
@@ -178,7 +154,12 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
   );
 
   const pendingCount = requests.filter((r) => r.status === 'pending').length;
-  const assignedCount = requests.filter((r) => r.status === 'assigned').length;
+  // Both statuses mean the same thing to a contractor - a driver has this
+  // job - so they share a card rather than leaving in-transit requests
+  // counted nowhere and the three cards not summing to the total.
+  const inProgressCount = requests.filter(
+    (r) => r.status === 'assigned' || r.status === 'in_transit'
+  ).length;
   const completedCount = requests.filter((r) => r.status === 'completed').length;
 
   return (
@@ -200,17 +181,17 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{pendingCount}</Text>
             <Text style={styles.statLabel}>Pending</Text>
-            <View style={[styles.statIndicator, { backgroundColor: '#FFA500' }]} />
+            <View style={[styles.statIndicator, { backgroundColor: statusColor('pending') }]} />
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{assignedCount}</Text>
-            <Text style={styles.statLabel}>Assigned</Text>
-            <View style={[styles.statIndicator, { backgroundColor: '#0066CC' }]} />
+            <Text style={styles.statNumber}>{inProgressCount}</Text>
+            <Text style={styles.statLabel}>In Progress</Text>
+            <View style={[styles.statIndicator, { backgroundColor: statusColor('assigned') }]} />
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{completedCount}</Text>
             <Text style={styles.statLabel}>Completed</Text>
-            <View style={[styles.statIndicator, { backgroundColor: '#10B981' }]} />
+            <View style={[styles.statIndicator, { backgroundColor: statusColor('completed') }]} />
           </View>
         </View>
 
@@ -229,8 +210,12 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         </View>
 
         {/* Filter Tabs */}
-        <View style={styles.filterContainer}>
-          {(['all', 'pending', 'assigned', 'completed'] as const).map((tab) => (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContainer}
+        >
+          {FILTER_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[
@@ -245,11 +230,11 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
                   activeTab === tab && styles.filterTabTextActive,
                 ]}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'all' ? 'All' : statusLabel(tab)}
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Requests List */}
         {loading && filteredRequests.length === 0 ? (
@@ -400,8 +385,8 @@ const styles = StyleSheet.create({
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
+    paddingBottom: 20,
     gap: 8,
-    marginBottom: 20,
   },
   filterTab: {
     paddingHorizontal: 16,

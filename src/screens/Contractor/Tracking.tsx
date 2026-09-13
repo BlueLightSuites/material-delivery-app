@@ -1,8 +1,26 @@
-import React from 'react';
-import { StyleSheet, View, Text, SafeAreaView } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RouteProp } from '@react-navigation/native';
+import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
+import { useAuth } from '../../context/AuthContext';
+import { getDeliveryRequestById, DeliveryRequest } from '../../services/api/deliveryRequests';
+import {
+  DELIVERY_STATUS_ORDER,
+  statusColor,
+  statusLabel,
+  statusDescription,
+  isStatusReached,
+} from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 
 type TrackingNavigationProp = StackNavigationProp<MainStackParamList, 'Tracking'>;
@@ -13,24 +31,183 @@ interface TrackingProps {
   route: TrackingRouteProp;
 }
 
+const formatTimestamp = (value?: string): string | null => {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+};
+
 const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
   const { requestId } = route.params;
+  const { accessToken } = useAuth();
+
+  const [request, setRequest] = useState<DeliveryRequest | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchRequest = useCallback(async () => {
+    if (!accessToken) {
+      return;
+    }
+    const data = await getDeliveryRequestById(accessToken, requestId);
+    setRequest(data);
+    setLoading(false);
+  }, [accessToken, requestId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchRequest();
+    }, [fetchRequest])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchRequest();
+    setRefreshing(false);
+  };
+
+  const navItems = [
+    { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
+    { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
+    { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
+  ];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#0066CC" />
+        </View>
+        <BottomNavBar items={navItems} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!request) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={styles.emptyTitle}>Request Not Found</Text>
+          <Text style={styles.emptySubtitle}>
+            This request may have been removed, or you may not have access to it.
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => navigation.navigate('RequestList')}
+          >
+            <Text style={styles.primaryButtonText}>Back to Requests</Text>
+          </TouchableOpacity>
+        </View>
+        <BottomNavBar items={navItems} />
+      </SafeAreaView>
+    );
+  }
+
+  const accent = statusColor(request.status);
+  const lastUpdated = formatTimestamp(request.updated_at || request.created_at);
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Track Delivery</Text>
-        <Text style={styles.subtitle}>Request ID: {requestId}</Text>
-        <Text style={styles.subtitle}>Coming soon...</Text>
-      </View>
-      <BottomNavBar
-        items={[
-          { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
-          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
-          { key: 'tracking', icon: '🚚', label: 'Tracking', onPress: () => navigation.navigate('Tracking', { requestId: '1' }) },
-          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
-        ]}
-      />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.header}>
+          <View style={[styles.statusBadge, { backgroundColor: `${accent}20` }]}>
+            <View style={[styles.statusDot, { backgroundColor: accent }]} />
+            <Text style={[styles.statusText, { color: accent }]}>{statusLabel(request.status)}</Text>
+          </View>
+          <Text style={styles.headerTitle}>{request.material_category}</Text>
+          <Text style={styles.headerSubtitle}>
+            {request.material_weight} {request.material_unit}
+          </Text>
+          <Text style={styles.statusDescription}>{statusDescription(request.status)}</Text>
+          {lastUpdated && <Text style={styles.updatedText}>Last updated {lastUpdated}</Text>}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Progress</Text>
+          {DELIVERY_STATUS_ORDER.map((step, index) => {
+            const reached = isStatusReached(step, request.status);
+            const isCurrent = step === request.status;
+            const isLast = index === DELIVERY_STATUS_ORDER.length - 1;
+
+            return (
+              <View key={step} style={styles.timelineRow}>
+                <View style={styles.timelineGutter}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      reached && { backgroundColor: statusColor(step), borderColor: statusColor(step) },
+                      isCurrent && styles.timelineDotCurrent,
+                    ]}
+                  />
+                  {!isLast && (
+                    <View
+                      style={[styles.timelineLine, reached && { backgroundColor: statusColor(step) }]}
+                    />
+                  )}
+                </View>
+                <View style={styles.timelineBody}>
+                  <Text style={[styles.timelineLabel, reached && styles.timelineLabelReached]}>
+                    {statusLabel(step)}
+                  </Text>
+                  {isCurrent && (
+                    <Text style={styles.timelineDescription}>{statusDescription(step)}</Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Route</Text>
+          <View style={styles.locationRow}>
+            <Text style={styles.locationIcon}>📍</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationCaption}>Pickup</Text>
+              <Text style={styles.locationText}>{request.pickup_address}</Text>
+            </View>
+          </View>
+          <View style={styles.locationRow}>
+            <Text style={styles.locationIcon}>🎯</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationCaption}>Dropoff</Text>
+              <Text style={styles.locationText}>{request.dropoff_address}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Details</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailKey}>Trailer required</Text>
+            <Text style={styles.detailValue}>{request.requires_trailer ? 'Yes' : 'No'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailKey}>Requested</Text>
+            <Text style={styles.detailValue}>{formatTimestamp(request.created_at) || '—'}</Text>
+          </View>
+          {!!request.notes && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={styles.detailKey}>Notes</Text>
+              <Text style={styles.notesText}>{request.notes}</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+      <BottomNavBar items={navItems} />
     </SafeAreaView>
   );
 };
@@ -40,21 +217,185 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  content: {
+  scrollView: {
+    flex: 1,
+  },
+  centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
-  title: {
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1A1A1A',
-    marginBottom: 10,
   },
-  subtitle: {
-    fontSize: 16,
+  headerSubtitle: {
+    fontSize: 15,
     color: '#666666',
+    marginTop: 4,
+  },
+  statusDescription: {
+    fontSize: 14,
+    color: '#1A1A1A',
+    marginTop: 12,
+    lineHeight: 20,
+  },
+  updatedText: {
+    fontSize: 12,
+    color: '#999999',
+    marginTop: 6,
+  },
+  card: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#999999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 14,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+  },
+  timelineGutter: {
+    alignItems: 'center',
+    width: 24,
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#D0D0D0',
+    backgroundColor: '#FFFFFF',
+  },
+  timelineDotCurrent: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  timelineLine: {
+    flex: 1,
+    width: 2,
+    minHeight: 26,
+    backgroundColor: '#E8E8E8',
+    marginVertical: 2,
+  },
+  timelineBody: {
+    flex: 1,
+    paddingLeft: 12,
+    paddingBottom: 18,
+  },
+  timelineLabel: {
+    fontSize: 14,
+    color: '#999999',
+    fontWeight: '500',
+  },
+  timelineLabelReached: {
+    color: '#1A1A1A',
+    fontWeight: '600',
+  },
+  timelineDescription: {
+    fontSize: 13,
+    color: '#666666',
+    marginTop: 3,
+    lineHeight: 18,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  locationIcon: {
+    fontSize: 16,
+    marginRight: 10,
+    marginTop: 2,
+  },
+  locationCaption: {
+    fontSize: 11,
+    color: '#999999',
+    marginBottom: 2,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#1A1A1A',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  detailKey: {
+    fontSize: 13,
+    color: '#666666',
+  },
+  detailValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  notesText: {
+    fontSize: 13,
+    color: '#1A1A1A',
+    marginTop: 4,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  primaryButton: {
+    backgroundColor: '#0066CC',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 
