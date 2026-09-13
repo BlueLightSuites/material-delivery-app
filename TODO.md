@@ -79,8 +79,12 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ### 8. Live driver location + ETA ([#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8))
 
-- Depends on Phase 1 items 3 and 4. Push the driver's position periodically (foreground first; background tracking is its own can of worms — evaluate whether it's needed for v1 or whether foreground-only is acceptable given drivers keep the app open during a delivery).
-- Realtime delivery to the contractor: Supabase Realtime (already a dependency via `@supabase/supabase-js`, currently unused) is the natural fit — subscribe to updates on the assigned request's row instead of polling.
+- **Status:** Done (pending a real-device check of the realtime path — see below)
+- **Migration:** `supabase/migrations/20260913000000_add_driver_location_tracking.sql` — `driver_lat`/`driver_lng`/`driver_location_updated_at` on `delivery_requests`, plus a `report_driver_location` RPC following the same guarded SECURITY DEFINER pattern as accept/advance. Position is only accepted from the assigned driver while the job is in progress, and is cleared on completion rather than left behind.
+- **Driver:** `src/hooks/useDriverLocationReporter.ts` streams position with `watchPositionAsync` (the OS decides when movement is worth a fix, instead of waking the GPS on a fixed schedule). Foreground-only — background needs the "always" permission, a background-mode entitlement, and a much harder App Store justification. Upgrading later is a permissions change, not a rewrite; the server side is identical.
+- **Contractor:** subscribes over Supabase Realtime, **falling back to 10s polling if the channel errors**. The rest of the app avoids the Supabase SDK for Hermes reasons (see `src/services/firebase/supabaseClient.ts`), so the SDK is introduced narrowly here — websockets are the one thing REST genuinely can't do — and a failure degrades rather than leaving a screen that silently never updates.
+- **ETA** is straight-line distance at an assumed 30 mph, presented as "about N min" and labelled as such. A real road-network ETA needs a routing API (key, billing, per-request cost) — a separate decision.
+- **Worth re-checking on device:** the realtime path is the least-exercised code here. If it silently falls back to polling in practice, the Hermes concern was justified and the fallback is doing its job — but that should be confirmed rather than assumed.
 
 ### 9. Push notifications ([#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9))
 
