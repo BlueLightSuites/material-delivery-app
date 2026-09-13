@@ -4,6 +4,11 @@ import { User } from '../models/User';
 import { loadSession, saveSession, clearSession } from '../services/auth/sessionService';
 import { refreshSession } from '../services/firebase/authService';
 import { installAuthInterceptor, uninstallAuthInterceptor } from '../services/api/authInterceptor';
+import {
+  registerForPushNotifications,
+  savePushToken,
+  clearPushToken,
+} from '../services/notifications';
 
 // Supabase access tokens last an hour. Renew comfortably inside that so a
 // long-lived screen doesn't start 401ing mid-session.
@@ -118,6 +123,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     restoreSession();
   }, []);
 
+  // Registered whenever there's a session, not just at login: the token
+  // can be reissued by the OS (reinstall, restore from backup), and a
+  // stale one silently sends notifications nowhere.
+  useEffect(() => {
+    if (!accessToken || !user?.auth_id) {
+      return;
+    }
+
+    let cancelled = false;
+    registerForPushNotifications().then((token) => {
+      if (token && !cancelled && user.auth_id) {
+        savePushToken(accessToken, user.auth_id, token);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, user?.auth_id]);
+
   // Two triggers, because neither covers the other's case. The timer
   // handles an app left open past the token's lifetime; the foreground
   // check handles an app that was backgrounded, where iOS suspends JS
@@ -154,6 +179,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = async () => {
+    // Before the session is torn down, while the token still authorizes
+    // the write - otherwise the next person to sign in on this device
+    // would keep receiving the previous user's delivery notifications.
+    if (accessToken && user?.auth_id) {
+      await clearPushToken(accessToken, user.auth_id);
+    }
+
     refreshTokenRef.current = null;
     setUser(null);
     setAccessToken(null);
