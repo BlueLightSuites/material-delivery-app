@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -21,6 +21,7 @@ import {
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 import { useDriverLocationReporter } from '../../hooks/useDriverLocationReporter';
+import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
 
 type JobDetailNavigationProp = StackNavigationProp<MainStackParamList, 'JobDetail'>;
 type JobDetailRouteProp = RouteProp<MainStackParamList, 'JobDetail'>;
@@ -30,11 +31,15 @@ interface JobDetailProps {
   route: JobDetailRouteProp;
 }
 
+// Driver-voiced, deliberately different from the contractor-facing
+// labels in models/deliveryStatus.ts - "Assigned to you" only makes
+// sense on this side.
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Open',
   assigned: 'Assigned to you',
   in_transit: 'In transit',
   completed: 'Delivered',
+  cancelled: 'Cancelled by contractor',
 };
 
 const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
@@ -70,6 +75,35 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
     jobId,
     isMine && (job?.status === 'assigned' || job?.status === 'in_transit')
   );
+
+  // The contractor can cancel a job out from under the driver. Without a
+  // live subscription the driver finds out only by navigating away and
+  // back, and the job simply vanishes with no explanation. Push covers
+  // this when it's available, but not on a simulator and not for a
+  // driver who declined notifications - so the screen they're actually
+  // looking at has to say so itself.
+  useEffect(() => {
+    if (!accessToken || !job?.id) {
+      return;
+    }
+
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      subscription = subscribeToDeliveryRequest(accessToken, job.id, (row) => {
+        // Updated in place rather than thrown up as a modal. A driver
+        // seeing this is very likely in motion, and a dialog demanding a
+        // tap is both unsafe and easy to dismiss reflexively without
+        // reading. The banner stays on screen, and the jobs list keeps
+        // its own copy until acknowledged.
+        setJob((current) => ({ ...current, ...row } as DeliveryRequest));
+      });
+    } catch (error) {
+      // Falls back to the existing refetch-on-focus behaviour.
+      console.error('JobDetail: realtime subscribe failed', error);
+    }
+
+    return () => subscription?.unsubscribe();
+  }, [accessToken, job?.id, navigation]);
 
   const handleAccept = async () => {
     if (!accessToken) {
@@ -153,6 +187,21 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
             {job.material_weight} {job.material_unit}
           </Text>
         </View>
+
+        {job.status === 'cancelled' && (
+          <View style={styles.cancelledBanner}>
+            <Text style={styles.cancelledBannerTitle}>The contractor cancelled this job</Text>
+            <Text style={styles.cancelledBannerBody}>
+              You don't need to continue to the pickup. You're free to take new jobs.
+            </Text>
+            <TouchableOpacity
+              style={styles.cancelledBannerButton}
+              onPress={() => navigation.navigate('JobsNearby')}
+            >
+              <Text style={styles.cancelledBannerButtonText}>Back to jobs</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Route</Text>
@@ -290,6 +339,40 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#666666',
     marginTop: 4,
+  },
+  cancelledBanner: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FFF6F5',
+    borderWidth: 1,
+    borderColor: '#E7A9A2',
+  },
+  cancelledBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#8A3B2C',
+    marginBottom: 6,
+  },
+  cancelledBannerBody: {
+    fontSize: 13,
+    color: '#6B4A43',
+    lineHeight: 19,
+  },
+  cancelledBannerButton: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#8A3B2C',
+  },
+  cancelledBannerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A3B2C',
   },
   card: {
     marginHorizontal: 20,

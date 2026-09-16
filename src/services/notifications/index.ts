@@ -52,8 +52,17 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     if (Platform.OS === 'android') {
-      // Android requires a channel before anything will be displayed.
-      await Notifications.setNotificationChannelAsync('default', {
+      // Two channels, not one. Android lets the user mute each
+      // independently in system settings, so a driver who silences
+      // routine updates doesn't also silence being told their active job
+      // was cancelled - which is operational, not informational. A single
+      // channel would force that all-or-nothing choice.
+      await Notifications.setNotificationChannelAsync('job-alerts', {
+        name: 'Job alerts',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+      });
+      await Notifications.setNotificationChannelAsync('updates', {
         name: 'Delivery updates',
         importance: Notifications.AndroidImportance.DEFAULT,
       });

@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   getDeliveryRequests,
   acceptDeliveryRequest,
+  acknowledgeCancelledJob,
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
@@ -33,6 +34,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   const { accessToken, user } = useAuth();
   const [jobs, setJobs] = useState<DeliveryRequest[]>([]);
   const [activeJobs, setActiveJobs] = useState<DeliveryRequest[]>([]);
+  const [cancelledJobs, setCancelledJobs] = useState<DeliveryRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -55,7 +57,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
       // Accepting a job flips it out of 'pending', so the open-jobs query
       // alone would leave a driver with no route back to a job they've
       // taken - and no way to reach the status actions on it.
-      const [pending, mine] = await Promise.all([
+      const [pending, mine, cancelled] = await Promise.all([
         getDeliveryRequests(accessToken, 'status=eq.pending'),
         user?.auth_id
           ? getDeliveryRequests(
@@ -63,9 +65,19 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
               `assigned_driver_id=eq.${user.auth_id}&status=in.(assigned,in_transit)`
             )
           : Promise.resolve([]),
+        // Cancelled jobs this driver hasn't acknowledged yet. These stay
+        // put until dismissed rather than disappearing, so a driver who
+        // missed the push still learns why the job is gone.
+        user?.auth_id
+          ? getDeliveryRequests(
+              accessToken,
+              `assigned_driver_id=eq.${user.auth_id}&status=eq.cancelled&driver_ack_cancelled_at=is.null`
+            )
+          : Promise.resolve([]),
       ]);
       setJobs(pending);
       setActiveJobs(mine);
+      setCancelledJobs(cancelled);
     } catch (error) {
       console.error('fetchJobs: Error fetching jobs:', error);
     } finally {
@@ -84,6 +96,16 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
       fetchJobs();
     }, [accessToken, user?.auth_id])
   );
+
+  const handleDismissCancelled = async (jobId: string) => {
+    if (!accessToken) {
+      return;
+    }
+    // Removed locally first: the acknowledgement is a courtesy record,
+    // not something worth making the driver wait on or retry.
+    setCancelledJobs((prev) => prev.filter((job) => job.id !== jobId));
+    acknowledgeCancelledJob(accessToken, jobId);
+  };
 
   const handleAccept = async (jobId: string) => {
     if (!accessToken) {
@@ -190,6 +212,29 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
           </Text>
         </View>
 
+        {cancelledJobs.length > 0 && (
+          <View style={styles.activeSection}>
+            <Text style={styles.activeSectionTitle}>Cancelled</Text>
+            {cancelledJobs.map((job) => (
+              <View key={job.id} style={styles.cancelledCard}>
+                <Text style={styles.cancelledTitle}>
+                  {job.material_category} job cancelled
+                </Text>
+                <Text style={styles.cancelledBody}>
+                  The contractor cancelled this pickup at {job.pickup_address}. You're free to
+                  take new jobs.
+                </Text>
+                <TouchableOpacity
+                  style={styles.dismissButton}
+                  onPress={() => job.id && handleDismissCancelled(job.id)}
+                >
+                  <Text style={styles.dismissButtonText}>Got it</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
         {activeJobs.length > 0 && (
           <View style={styles.activeSection}>
             <Text style={styles.activeSectionTitle}>Your Active Jobs</Text>
@@ -287,6 +332,39 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#999999',
+  },
+  cancelledCard: {
+    backgroundColor: '#FFF6F5',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E7A9A2',
+    padding: 16,
+    marginBottom: 12,
+  },
+  cancelledTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#8A3B2C',
+    marginBottom: 6,
+  },
+  cancelledBody: {
+    fontSize: 13,
+    color: '#6B4A43',
+    lineHeight: 19,
+  },
+  dismissButton: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#8A3B2C',
+  },
+  dismissButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A3B2C',
   },
   activeSection: {
     paddingHorizontal: 20,
