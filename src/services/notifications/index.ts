@@ -1,5 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import axios from 'axios';
 import { SUPABASE_CONFIG } from '../../config/supabaseConfig';
@@ -27,15 +26,15 @@ Notifications.setNotificationHandler({
  * a simulator, a declined prompt - because none of them are errors worth
  * interrupting the user over. They just mean this device won't receive
  * notifications.
+ *
+ * Simulators are handled by the catch rather than an up-front check:
+ * getExpoPushTokenAsync throws there, which lands in the same place. The
+ * explicit check used expo-device, whose SDK 48 version fails to compile
+ * under Xcode 16 ("cannot find 'TARGET_OS_SIMULATOR' in scope"), and a
+ * dependency that breaks the build isn't worth a slightly clearer log
+ * line.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  // Push tokens are only issued to real hardware; a simulator throws
-  // rather than returning null, so this has to be checked first.
-  if (!Device.isDevice) {
-    console.log('registerForPushNotifications: skipped, not a physical device');
-    return null;
-  }
-
   try {
     const existing = await Notifications.getPermissionsAsync();
     let status = existing.status;
