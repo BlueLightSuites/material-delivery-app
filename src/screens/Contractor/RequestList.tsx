@@ -19,7 +19,7 @@ import { getDeliveryRequests, DeliveryRequest as DBDeliveryRequest } from '../..
 import {
   statusColor,
   statusLabel,
-  DELIVERY_STATUS_ORDER,
+  ALL_DELIVERY_STATUSES,
   DeliveryStatus,
 } from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
@@ -27,8 +27,9 @@ import BottomNavBar from '../../components/navigation/BottomNavBar';
 type RequestListNavigationProp = StackNavigationProp<MainStackParamList, 'RequestList'>;
 
 // Derived from the status vocabulary rather than hand-listed, so a status
-// added later can't silently end up with no tab to appear under.
-const FILTER_TABS = ['all', ...DELIVERY_STATUS_ORDER] as const;
+// added later can't silently end up with no tab to appear under - which
+// is exactly how in_transit ended up unreachable before.
+const FILTER_TABS = ['all', ...ALL_DELIVERY_STATUSES] as const;
 
 type FilterTab = 'all' | DeliveryStatus;
 

@@ -8,18 +8,24 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
-import { getDeliveryRequestById, DeliveryRequest } from '../../services/api/deliveryRequests';
+import {
+  getDeliveryRequestById,
+  cancelDeliveryRequest,
+  DeliveryRequest,
+} from '../../services/api/deliveryRequests';
 import {
   DELIVERY_STATUS_ORDER,
   statusColor,
   statusLabel,
   statusDescription,
   isStatusReached,
+  isCancelled,
 } from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
@@ -135,6 +141,48 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
     { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
   ];
 
+  const [cancelling, setCancelling] = useState(false);
+
+  // Only while nobody is carrying the load yet. The RPC enforces the
+  // same window server-side, so this governs the button, not the rule.
+  const canCancel = request?.status === 'pending' || request?.status === 'assigned';
+
+  const handleCancel = () => {
+    Alert.alert(
+      'Cancel this request?',
+      request?.status === 'assigned'
+        ? 'A driver has already accepted this job and will be notified that it is cancelled.'
+        : 'This request will be withdrawn. No driver has accepted it yet.',
+      [
+        { text: 'Keep request', style: 'cancel' },
+        {
+          text: 'Cancel request',
+          style: 'destructive',
+          onPress: async () => {
+            if (!accessToken) {
+              return;
+            }
+            setCancelling(true);
+            try {
+              const cancelled = await cancelDeliveryRequest(accessToken, requestId);
+              if (cancelled) {
+                setRequest(cancelled);
+              } else {
+                Alert.alert(
+                  'Could not cancel',
+                  "This request's status changed - it may already be in transit. Refreshing."
+                );
+                fetchRequest();
+              }
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -221,6 +269,15 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
           {lastUpdated && <Text style={styles.updatedText}>Last updated {lastUpdated}</Text>}
         </View>
 
+        {isCancelled(request.status) ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Progress</Text>
+            <Text style={styles.cancelledNotice}>
+              This request was cancelled{lastUpdated ? ` on ${lastUpdated}` : ''}. It is no longer
+              visible to drivers.
+            </Text>
+          </View>
+        ) : (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Progress</Text>
           {DELIVERY_STATUS_ORDER.map((step, index) => {
@@ -256,6 +313,7 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             );
           })}
         </View>
+        )}
 
         {driverLocation && (
           <View style={styles.card}>
@@ -313,6 +371,20 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             </View>
           )}
         </View>
+
+        {canCancel && (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={handleCancel}
+            disabled={cancelling}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color="#B3261E" />
+            ) : (
+              <Text style={styles.cancelButtonText}>Cancel this request</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
       <BottomNavBar items={navItems} />
     </SafeAreaView>
@@ -410,6 +482,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8A6D3B',
     lineHeight: 19,
+  },
+  cancelledNotice: {
+    fontSize: 14,
+    color: '#666666',
+    lineHeight: 20,
+  },
+  cancelButton: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#B3261E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#B3261E',
   },
   timelineRow: {
     flexDirection: 'row',

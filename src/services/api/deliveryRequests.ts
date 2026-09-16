@@ -45,6 +45,7 @@ export interface DeliveryRequest {
   driver_lat?: number | null;
   driver_lng?: number | null;
   driver_location_updated_at?: string | null;
+  driver_ack_cancelled_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -254,6 +255,81 @@ export async function reportDriverLocation(
       status: error?.response?.status,
       data: error?.response?.data,
       message: error?.message,
+    });
+    return false;
+  }
+}
+
+/**
+ * Cancel a request the caller owns, via the `cancel_delivery_request`
+ * RPC (see sql/20260915000000_add_request_cancellation.sql).
+ *
+ * Succeeds only while the request is 'pending' or 'assigned'; once a
+ * driver is in transit they are physically carrying the load and the RPC
+ * refuses. Returns null when nothing was cancelled, which the caller
+ * should treat as "the state moved underneath you" and refetch, not as
+ * an error.
+ */
+export async function cancelDeliveryRequest(
+  accessToken: string,
+  requestId: string
+): Promise<DeliveryRequest | null> {
+  try {
+    const response = await retryWithBackoff(async () => {
+      return await axios.post(
+        `${API_URL}/rest/v1/rpc/cancel_delivery_request`,
+        { p_request_id: requestId },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+    });
+
+    const cancelled = Array.isArray(response.data) ? response.data[0] : response.data;
+    return (cancelled as DeliveryRequest) || null;
+  } catch (error: any) {
+    console.error('cancelDeliveryRequest error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    return null;
+  }
+}
+
+/**
+ * Mark a cancelled job as seen by the driver it was assigned to, via the
+ * `acknowledge_cancelled_job` RPC. Until this is called the cancellation
+ * notice stays in their jobs list, so a driver who missed the push and
+ * the in-app alert still finds out rather than watching the job silently
+ * disappear.
+ */
+export async function acknowledgeCancelledJob(
+  accessToken: string,
+  requestId: string
+): Promise<boolean> {
+  try {
+    const response = await axios.post(
+      `${API_URL}/rest/v1/rpc/acknowledge_cancelled_job`,
+      { p_request_id: requestId },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+    const acked = Array.isArray(response.data) ? response.data[0] : response.data;
+    return !!acked;
+  } catch (error: any) {
+    console.error('acknowledgeCancelledJob error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
     });
     return false;
   }
