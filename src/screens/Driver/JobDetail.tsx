@@ -22,6 +22,8 @@ import {
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 import { useDriverLocationReporter } from '../../hooks/useDriverLocationReporter';
 import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
+import { RatingPrompt } from '../../components/job/Rating';
+import { submitRating, hasRatedDelivery } from '../../services/api/ratings';
 
 type JobDetailNavigationProp = StackNavigationProp<MainStackParamList, 'JobDetail'>;
 type JobDetailRouteProp = RouteProp<MainStackParamList, 'JobDetail'>;
@@ -105,6 +107,27 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
     return () => subscription?.unsubscribe();
   }, [accessToken, job?.id, navigation]);
 
+  const [alreadyRated, setAlreadyRated] = useState(true);
+  const [ratingSkipped, setRatingSkipped] = useState(false);
+
+  useEffect(() => {
+    if (!accessToken || !user?.auth_id || job?.status !== 'completed' || !isMine) {
+      return;
+    }
+    hasRatedDelivery(accessToken, jobId, user.auth_id).then(setAlreadyRated);
+  }, [accessToken, jobId, user?.auth_id, job?.status, isMine]);
+
+  const handleSubmitRating = async (stars: number, comment?: string) => {
+    if (!accessToken) {
+      return;
+    }
+    const saved = await submitRating(accessToken, jobId, stars, comment);
+    setAlreadyRated(true);
+    if (!saved) {
+      Alert.alert('Could not save rating', 'Please try again from your jobs list.');
+    }
+  };
+
   const handleAccept = async () => {
     if (!accessToken) {
       Alert.alert('Authentication required', 'Please sign in again before accepting a job.');
@@ -187,6 +210,14 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
             {job.material_weight} {job.material_unit}
           </Text>
         </View>
+
+        {job.status === 'completed' && isMine && !alreadyRated && !ratingSkipped && (
+          <RatingPrompt
+            subject="this contractor"
+            onSubmit={handleSubmitRating}
+            onSkip={() => setRatingSkipped(true)}
+          />
+        )}
 
         {job.status === 'cancelled' && (
           <View style={styles.cancelledBanner}>

@@ -28,6 +28,13 @@ import {
   isCancelled,
 } from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { RatingPrompt, RatingBadge } from '../../components/job/Rating';
+import {
+  submitRating,
+  hasRatedDelivery,
+  getCounterpartyRating,
+  CounterpartyRating,
+} from '../../services/api/ratings';
 import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
 import { distanceInMiles, estimateMinutesAway } from '../../services/geolocation';
 
@@ -63,7 +70,7 @@ const formatTimestamp = (value?: string): string | null => {
 
 const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
   const { requestId } = route.params;
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
 
   const [request, setRequest] = useState<DeliveryRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,6 +149,39 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
   ];
 
   const [cancelling, setCancelling] = useState(false);
+  const [driverRating, setDriverRating] = useState<CounterpartyRating | null>(null);
+  const [alreadyRated, setAlreadyRated] = useState(true);
+  const [ratingSkipped, setRatingSkipped] = useState(false);
+
+  // The driver's reputation, shown from the moment they accept - which
+  // is when it's actually useful to the contractor, not after delivery.
+  useEffect(() => {
+    if (!accessToken || !request?.assigned_driver_id) {
+      return;
+    }
+    getCounterpartyRating(accessToken, requestId).then(setDriverRating);
+  }, [accessToken, requestId, request?.assigned_driver_id]);
+
+  // Defaults to "already rated" so the prompt can only appear once we
+  // positively know it hasn't been - a prompt that flashes up and
+  // vanishes is worse than one that appears a beat late.
+  useEffect(() => {
+    if (!accessToken || !user?.auth_id || request?.status !== 'completed') {
+      return;
+    }
+    hasRatedDelivery(accessToken, requestId, user.auth_id).then(setAlreadyRated);
+  }, [accessToken, requestId, user?.auth_id, request?.status]);
+
+  const handleSubmitRating = async (stars: number, comment?: string) => {
+    if (!accessToken) {
+      return;
+    }
+    const saved = await submitRating(accessToken, requestId, stars, comment);
+    setAlreadyRated(true);
+    if (!saved) {
+      Alert.alert('Could not save rating', 'Please try again from your requests list.');
+    }
+  };
 
   // Only while nobody is carrying the load yet. The RPC enforces the
   // same window server-side, so this governs the button, not the rule.
@@ -313,6 +353,24 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             );
           })}
         </View>
+        )}
+
+        {request.status === 'completed' && !alreadyRated && !ratingSkipped && (
+          <RatingPrompt
+            subject="your driver"
+            onSubmit={handleSubmitRating}
+            onSkip={() => setRatingSkipped(true)}
+          />
+        )}
+
+        {!!request.assigned_driver_id && request.status !== 'cancelled' && (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Your Driver</Text>
+            <RatingBadge
+              average={driverRating?.rating_avg ?? null}
+              count={driverRating?.rating_count ?? 0}
+            />
+          </View>
         )}
 
         {driverLocation && (
