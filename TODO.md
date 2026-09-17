@@ -103,7 +103,10 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ### 11. Ratings ([#11](https://github.com/BlueLightSuites/material-delivery-app/issues/11))
 
-- `src/components/job/Rating.tsx` exists but isn't wired to anything. Needed once deliveries actually complete, for both sides to build trust signals.
+- **Status:** Done (`20260917000000_add_ratings.sql`). `Rating.tsx` turned out to be an empty file rather than an unwired component, so this was built from scratch.
+- Two-sided, one rating per person per delivery, skippable prompt after completion. Contractor sees the driver's average once assigned.
+- `submit_rating` derives the ratee from the delivery rather than accepting it as a parameter — otherwise anyone could review someone uninvolved. `get_counterparty_rating` keeps the cross-party profile read narrow, returning an average and count for one delivery rather than widening the users SELECT policy.
+- **Known gap:** the prompt only shows on that delivery's screen, so a contractor who never reopens a completed request is never asked.
 
 ### 12. Request detail / edit / cancel for contractors ([#12](https://github.com/BlueLightSuites/material-delivery-app/issues/12))
 
