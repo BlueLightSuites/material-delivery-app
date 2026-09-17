@@ -1,10 +1,10 @@
 # Roadmap to a usable Uber-like delivery platform
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-16
 Every item below is tracked as a GitHub issue in [BlueLightSuites/material-delivery-app](https://github.com/BlueLightSuites/material-delivery-app/issues), labeled `phase-1`/`phase-2`/`phase-3`. Issue numbers are linked inline.
 See [STATUS.md](./STATUS.md) first — it's the verified inventory of what's actually built. This file is the plan for what's left, ordered by what's actually blocking a working product.
 
-The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. Today that loop works apart from "nearby" and "track it live" — a contractor can post, a driver can see, accept, and complete a job, all against the live database. What's missing is location (so "nearby" means nothing yet), any tracking view for the contractor, and payment.
+The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. That loop now works end to end against the live database, including live driver position and an ETA, and a contractor can edit or cancel a request. What's missing is payment, ratings, a map, and verified push notifications.
 
 Phases are ordered by dependency, not by size — Phase 1 is the whole reason this is a two-sided marketplace and not just a form. Don't start Phase 2 or 3 work before Phase 1 closes the loop.
 
@@ -101,7 +101,12 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ### 12. Request detail / edit / cancel for contractors ([#12](https://github.com/BlueLightSuites/material-delivery-app/issues/12))
 
-- No `RequestDetail` screen exists; `RequestList` navigates straight to `Tracking`. A contractor currently cannot cancel or edit a request after submitting it, even while it's still pending.
+- **Status:** Done
+- **Cancel:** allowed while `pending` or `assigned`, refused once `in_transit` — at that point the driver is physically carrying the load. Goes through `cancel_delivery_request` (`20260915000000`), which also clears the driver's position.
+- **Edit:** allowed only while `pending`. Reuses the creation wizard via a `requestId` param rather than duplicating ~300 lines of form UI, opening on a summary with per-section Edit controls and a diff showing each changed field's previous value.
+- **Security fix included:** the original UPDATE policy allowed a contractor to rewrite any column at any status, including reverting an in-transit job to pending or unassigning its driver. Editing is now confined to pending requests and must leave them pending.
+- **Telling the driver:** push plus, more reliably, a notice that persists in their jobs list until acknowledged (`driver_ack_cancelled_at`, `20260915120000`). Push alone can't reach a simulator, a driver who declined notifications, or an offline phone.
+- **Open question on [#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10):** the driver is told their trip was called off but nothing about whether they're paid for the drive. Needs a compensation policy.
 
 ---
 
