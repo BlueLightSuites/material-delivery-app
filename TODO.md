@@ -93,7 +93,13 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ### 10. Payments ([#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10))
 
-- `src/services/payments/index.ts` and `src/components/payments/PaymentForm.tsx` are empty files with no dependency chosen yet (Stripe is the common choice for marketplace payouts — has built-in support for split payments/driver payouts via Connect, which this app will need). This needs its own scoping pass before implementation starts: pricing model (flat by weight/distance? contractor-set price?), who holds funds until delivery completes, driver payout timing, refund/dispute path.
+- **Scoped, not started.** The full design is recorded on [#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10); the summary:
+  - **Stripe Connect** (Express accounts), card data never touching our servers, authorize on accept and capture on delivery. The decisive argument for Connect is licensing — Stripe holds money-transmitter registration, and handling funds directly would make the platform a regulated money transmitter in every state it operates in.
+  - **Platform-calculated pricing**, **15%** take rate, **2-day rolling** payouts, road distance from the **Google Directions API**.
+  - `price_cents` is written at request creation and never recalculated: once a driver accepts at a price, retuning the formula must not change what that job owes.
+- **Blocked on a business decision, not code:** the formula constants (base fee, per-mile rate, weight threshold, trailer fee, minimum) need validating against what local haulers actually charge. Too low and no driver accepts; too high and contractors balk.
+- **Also unresolved:** cancellation compensation (a driver whose accepted job is cancelled is currently told nothing about payment), who absorbs chargebacks and damaged loads, and marketplace terms of service — the last worth professional review before real money moves.
+- **Shares a vendor with [#41](https://github.com/BlueLightSuites/material-delivery-app/issues/41) and [#13](https://github.com/BlueLightSuites/material-delivery-app/issues/13).** Google's map SDK is unlimited-free and Directions/Autocomplete are 10,000 calls/month free, so one key covers pricing, the map, and address autocomplete. Restrict it to the bundle id and set a hard quota cap — the key ships inside the binary.
 
 ### 11. Ratings ([#11](https://github.com/BlueLightSuites/material-delivery-app/issues/11))
 
