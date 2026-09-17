@@ -261,6 +261,48 @@ export async function reportDriverLocation(
 }
 
 /**
+ * Update a request the caller owns.
+ *
+ * A plain PATCH rather than an RPC: the narrowed update policy from
+ * 20260915000000 already confines this to the caller's own requests
+ * while they're still pending, and requires the row to still be pending
+ * afterwards. Status and driver assignment are therefore not writable
+ * here even if a caller tried.
+ */
+export async function updateDeliveryRequest(
+  accessToken: string,
+  requestId: string,
+  payload: Partial<Omit<DeliveryRequest, 'id' | 'auth_id' | 'status' | 'assigned_driver_id'>>
+): Promise<DeliveryRequest | null> {
+  try {
+    const response = await retryWithBackoff(async () => {
+      return await axios.patch(
+        `${API_URL}/rest/v1/delivery_requests?id=eq.${requestId}`,
+        { ...payload, updated_at: new Date().toISOString() },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+            Prefer: 'return=representation',
+          },
+        }
+      );
+    });
+
+    const rows = (response.data ?? []) as DeliveryRequest[];
+    return rows[0] || null;
+  } catch (error: any) {
+    console.error('updateDeliveryRequest error', {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+    });
+    return null;
+  }
+}
+
+/**
  * Cancel a request the caller owns, via the `cancel_delivery_request`
  * RPC (see sql/20260915000000_add_request_cancellation.sql).
  *

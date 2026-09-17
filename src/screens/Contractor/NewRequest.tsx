@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -14,15 +14,22 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { RouteProp } from '@react-navigation/native';
 import { MainStackParamList } from '../../navigation/MainNavigator';
 import { useAuth } from '../../context/AuthContext';
-import { createDeliveryRequest } from '../../services/api/deliveryRequests';
+import {
+  createDeliveryRequest,
+  updateDeliveryRequest,
+  getDeliveryRequestById,
+} from '../../services/api/deliveryRequests';
 import { geocodeAddress } from '../../services/geolocation';
 
 type NewRequestNavigationProp = StackNavigationProp<MainStackParamList, 'NewRequest'>;
+type NewRequestRouteProp = RouteProp<MainStackParamList, 'NewRequest'>;
 
 interface NewRequestProps {
   navigation: NewRequestNavigationProp;
+  route: NewRequestRouteProp;
 }
 
 interface DeliveryRequest {
@@ -55,10 +62,24 @@ const WEIGHT_UNITS = [
   { label: 'cubic yards', value: 'cubic_yards' },
 ];
 
-const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
+const NewRequest: React.FC<NewRequestProps> = ({ navigation, route }) => {
+  // The same wizard serves both jobs. Editing is only reachable while a
+  // request is still pending - the database enforces that too, so a
+  // request accepted while this screen was open fails to save rather
+  // than silently changing terms a driver already agreed to.
+  const editingId = route.params?.requestId;
+  const isEditing = !!editingId;
+  const [loadingExisting, setLoadingExisting] = useState(isEditing);
+  // The request as it currently exists in the database. Everything the
+  // summary says about what changed is measured against this, so it must
+  // not be updated as the contractor types.
+  const [savedForm, setSavedForm] = useState<DeliveryRequest | null>(null);
   const { accessToken, user } = useAuth();
+  // Editing opens on the summary: a contractor arriving here wants to
+  // see the whole order and change one part of it, not be walked from
+  // the beginning. Creating still starts at step one.
   const [currentStep, setCurrentStep] = useState<'location' | 'material' | 'vehicle' | 'review'>(
-    'location'
+    route.params?.requestId ? 'review' : 'location'
   );
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<DeliveryRequest>({
@@ -70,6 +91,47 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
     requiresTrailer: false,
     additionalNotes: '',
   });
+
+  useEffect(() => {
+    if (!editingId || !accessToken) {
+      return;
+    }
+    let cancelled = false;
+    getDeliveryRequestById(accessToken, editingId).then((existing) => {
+      if (cancelled) {
+        return;
+      }
+      if (!existing) {
+        Alert.alert('Request not found', 'This request may have been removed.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+        return;
+      }
+      if (existing.status !== 'pending') {
+        Alert.alert(
+          'Too late to edit',
+          'A driver has already accepted this request, so its details are locked.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        return;
+      }
+      const loaded: DeliveryRequest = {
+        pickupAddress: existing.pickup_address ?? '',
+        dropoffAddress: existing.dropoff_address ?? '',
+        materialCategory: existing.material_category ?? '',
+        materialWeight: existing.material_weight != null ? String(existing.material_weight) : '',
+        materialUnit: (existing.material_unit as DeliveryRequest['materialUnit']) ?? 'lbs',
+        requiresTrailer: !!existing.requires_trailer,
+        additionalNotes: existing.notes ?? '',
+      };
+      setForm(loaded);
+      setSavedForm(loaded);
+      setLoadingExisting(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, accessToken, navigation]);
 
   const handleInputChange = (field: keyof DeliveryRequest, value: string) => {
     setForm({ ...form, [field]: value });
@@ -119,7 +181,68 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
     }
   };
 
+  const hasFieldChanged = (field: keyof DeliveryRequest): boolean =>
+    !!savedForm && form[field] !== savedForm[field];
+
+  /** The saved value of a field, but only when it differs from what's on screen. */
+  const previousValue = (field: keyof DeliveryRequest): string | null => {
+    if (!hasFieldChanged(field) || !savedForm) {
+      return null;
+    }
+    const value = savedForm[field];
+    if (typeof value === 'boolean') {
+      return value ? 'Truck with Trailer' : 'Standard Truck';
+    }
+    return value === '' ? '(empty)' : String(value);
+  };
+
+  /** Quantity reads as one value to a contractor even though it's two fields. */
+  const previousQuantity = (): string | null => {
+    if (!savedForm || (!hasFieldChanged('materialWeight') && !hasFieldChanged('materialUnit'))) {
+      return null;
+    }
+    return `${savedForm.materialWeight} ${savedForm.materialUnit}`;
+  };
+
+  const sectionChanged = (fields: (keyof DeliveryRequest)[]): boolean =>
+    fields.some(hasFieldChanged);
+
+  const changedCount = savedForm
+    ? (Object.keys(form) as (keyof DeliveryRequest)[]).filter(hasFieldChanged).length
+    : 0;
+
+  // Returning to the summary validates the section being left, so the
+  // summary never shows a blank required field that Save would then
+  // bounce the contractor back to.
+  const handleDoneEditingSection = () => {
+    if (currentStep === 'location' && !validateLocationStep()) {
+      return;
+    }
+    if (currentStep === 'material' && !validateMaterialStep()) {
+      return;
+    }
+    setCurrentStep('review');
+  };
+
   const handleSubmit = async () => {
+    // A save from the vehicle step still writes addresses and material,
+    // so both sections are validated regardless of which one is visible.
+    // Without this, editing could blank a required field from a screen
+    // that never shows it.
+    if (isEditing) {
+      // Jump to the offending section before complaining about it -
+      // an alert about a pickup address is baffling while looking at the
+      // vehicle step, and leaves no obvious way to act on it.
+      if (!validateLocationStep()) {
+        setCurrentStep('location');
+        return;
+      }
+      if (!validateMaterialStep()) {
+        setCurrentStep('material');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       console.log('handleSubmit: Auth context values:', { accessToken: !!accessToken, userId: user?.id });
@@ -159,11 +282,30 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
         notes: form.additionalNotes,
       };
 
-      console.log('handleSubmit: Submitting delivery request payload:', payload);
+      if (isEditing && editingId) {
+        // auth_id is omitted: it never changes, and the update policy
+        // matches on it, so sending it back adds nothing but a way to
+        // get it wrong.
+        const { auth_id: _ignored, ...changes } = payload;
+        const updated = await updateDeliveryRequest(accessToken, editingId, changes);
+
+        if (updated) {
+          Alert.alert('Saved', 'Your request has been updated.', [
+            { text: 'OK', onPress: () => navigation.navigate('RequestList') },
+          ]);
+        } else {
+          // The most likely cause is a driver accepting between opening
+          // this screen and saving: the row is no longer pending, so the
+          // update policy stops matching it and nothing is written.
+          Alert.alert(
+            'Could not save',
+            'This request may have just been accepted by a driver, which locks its details. Reopen it to see its current state.'
+          );
+        }
+        return;
+      }
 
       const created = await createDeliveryRequest(accessToken, payload);
-
-      console.log('handleSubmit: Create response:', created);
 
       if (created) {
         Alert.alert('Success', 'Delivery request submitted successfully!', [
@@ -245,6 +387,19 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
     );
   };
 
+  // Without this the wizard renders empty fields for a moment and then
+  // fills them in, which reads as data loss on a screen whose whole
+  // purpose is editing existing data.
+  if (loadingExisting) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0066CC" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -252,7 +407,10 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
         style={styles.keyboardView}
       >
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {getStepIndicator()}
+          {/* Progress dots describe a four-step journey. Editing isn't
+              one - the summary is the hub and sections are reached from
+              it - so they'd imply a sequence that doesn't apply. */}
+          {!isEditing && getStepIndicator()}
 
           <View style={styles.formContainer}>
             {currentStep === 'location' && (
@@ -440,49 +598,116 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
 
             {currentStep === 'review' && (
               <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>Review Your Request</Text>
+                <Text style={styles.stepTitle}>
+                  {isEditing ? 'Your Request' : 'Review Your Request'}
+                </Text>
                 <Text style={styles.stepDescription}>
-                  Please review all details before submitting
+                  {isEditing
+                    ? 'Tap Edit on any section to change it, then save.'
+                    : 'Please review all details before submitting'}
                 </Text>
 
+                {isEditing && changedCount > 0 && (
+                  <View style={styles.changeBanner}>
+                    <Text style={styles.changeBannerText}>
+                      {changedCount} unsaved {changedCount === 1 ? 'change' : 'changes'}. Previous
+                      values are shown below each edit.
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.reviewCard}>
-                  <Text style={styles.reviewSectionTitle}>📍 Locations</Text>
+                  <View style={styles.reviewCardHeader}>
+                    <View style={styles.reviewTitleRow}>
+                      <Text style={styles.reviewSectionTitle}>📍 Locations</Text>
+                      {isEditing && sectionChanged(['pickupAddress', 'dropoffAddress']) && (
+                        <View style={styles.changedBadge}>
+                          <Text style={styles.changedBadgeText}>Changed</Text>
+                        </View>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => setCurrentStep('location')}>
+                      <Text style={styles.reviewEditLink}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.reviewItem}>
                     <Text style={styles.reviewLabel}>Pickup:</Text>
                     <Text style={styles.reviewValue}>{form.pickupAddress}</Text>
+                    {isEditing && previousValue('pickupAddress') && (
+                      <Text style={styles.reviewWas}>was {previousValue('pickupAddress')}</Text>
+                    )}
                   </View>
                   <View style={styles.reviewItem}>
                     <Text style={styles.reviewLabel}>Drop-off:</Text>
                     <Text style={styles.reviewValue}>{form.dropoffAddress}</Text>
+                    {isEditing && previousValue('dropoffAddress') && (
+                      <Text style={styles.reviewWas}>was {previousValue('dropoffAddress')}</Text>
+                    )}
                   </View>
                 </View>
 
                 <View style={styles.reviewCard}>
-                  <Text style={styles.reviewSectionTitle}>📦 Materials</Text>
+                  <View style={styles.reviewCardHeader}>
+                    <View style={styles.reviewTitleRow}>
+                      <Text style={styles.reviewSectionTitle}>📦 Materials</Text>
+                      {isEditing && sectionChanged(['materialCategory', 'materialWeight', 'materialUnit']) && (
+                        <View style={styles.changedBadge}>
+                          <Text style={styles.changedBadgeText}>Changed</Text>
+                        </View>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => setCurrentStep('material')}>
+                      <Text style={styles.reviewEditLink}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.reviewItem}>
                     <Text style={styles.reviewLabel}>Category:</Text>
                     <Text style={styles.reviewValue}>{form.materialCategory}</Text>
+                    {isEditing && previousValue('materialCategory') && (
+                      <Text style={styles.reviewWas}>was {previousValue('materialCategory')}</Text>
+                    )}
                   </View>
                   <View style={styles.reviewItem}>
                     <Text style={styles.reviewLabel}>Quantity:</Text>
                     <Text style={styles.reviewValue}>
                       {form.materialWeight} {form.materialUnit}
                     </Text>
+                    {isEditing && previousQuantity() && (
+                      <Text style={styles.reviewWas}>was {previousQuantity()}</Text>
+                    )}
                   </View>
                 </View>
 
                 <View style={styles.reviewCard}>
-                  <Text style={styles.reviewSectionTitle}>🚛 Vehicle</Text>
+                  <View style={styles.reviewCardHeader}>
+                    <View style={styles.reviewTitleRow}>
+                      <Text style={styles.reviewSectionTitle}>🚛 Vehicle</Text>
+                      {isEditing && sectionChanged(['requiresTrailer', 'additionalNotes']) && (
+                        <View style={styles.changedBadge}>
+                          <Text style={styles.changedBadgeText}>Changed</Text>
+                        </View>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => setCurrentStep('vehicle')}>
+                      <Text style={styles.reviewEditLink}>Edit</Text>
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.reviewItem}>
                     <Text style={styles.reviewLabel}>Type:</Text>
                     <Text style={styles.reviewValue}>
                       {form.requiresTrailer ? 'Truck with Trailer' : 'Standard Truck'}
                     </Text>
+                    {isEditing && previousValue('requiresTrailer') && (
+                      <Text style={styles.reviewWas}>was {previousValue('requiresTrailer')}</Text>
+                    )}
                   </View>
                   {form.additionalNotes && (
                     <View style={styles.reviewItem}>
                       <Text style={styles.reviewLabel}>Notes:</Text>
                       <Text style={styles.reviewValue}>{form.additionalNotes}</Text>
+                      {isEditing && previousValue('additionalNotes') && (
+                        <Text style={styles.reviewWas}>was {previousValue('additionalNotes')}</Text>
+                      )}
                     </View>
                   )}
                 </View>
@@ -492,7 +717,7 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
         </ScrollView>
 
         <View style={styles.buttonContainer}>
-          {currentStep !== 'location' && (
+          {!isEditing && currentStep !== 'location' && (
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={handleBack}
@@ -502,7 +727,25 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
             </TouchableOpacity>
           )}
 
-          {currentStep !== 'review' ? (
+          {isEditing ? (
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                { flex: 1 },
+                currentStep === 'review' && changedCount === 0 && styles.primaryButtonDisabled,
+              ]}
+              onPress={currentStep === 'review' ? handleSubmit : handleDoneEditingSection}
+              disabled={loading || (currentStep === 'review' && changedCount === 0)}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {currentStep === 'review' ? 'Save Changes' : 'Done'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : currentStep !== 'review' ? (
             <TouchableOpacity
               style={[styles.primaryButton, { flex: currentStep === 'location' ? 1 : 0.5 }]}
               onPress={handleNext}
@@ -519,7 +762,9 @@ const NewRequest: React.FC<NewRequestProps> = ({ navigation }) => {
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.primaryButtonText}>Submit Request</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isEditing ? 'Save Changes' : 'Submit Request'}
+                </Text>
               )}
             </TouchableOpacity>
           )}
@@ -533,6 +778,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   keyboardView: {
     flex: 1,
@@ -719,6 +969,52 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  changeBanner: {
+    backgroundColor: '#FFF8E6',
+    borderWidth: 1,
+    borderColor: '#E3B25C',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  changeBannerText: {
+    fontSize: 13,
+    color: '#7A5A18',
+    lineHeight: 18,
+  },
+  reviewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  changedBadge: {
+    backgroundColor: '#FFF3D6',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  changedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7A5A18',
+    textTransform: 'uppercase',
+  },
+  reviewWas: {
+    fontSize: 12,
+    color: '#999999',
+    marginTop: 2,
+    textDecorationLine: 'line-through',
+  },
+  reviewCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  reviewEditLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0066CC',
+  },
   reviewSectionTitle: {
     fontSize: 14,
     fontWeight: '600',
@@ -754,6 +1050,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#B8CFE8',
   },
   primaryButtonText: {
     color: '#FFFFFF',

@@ -200,7 +200,7 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={styles.createButton}
-            onPress={() => navigation.navigate('NewRequest')}
+            onPress={() => navigation.navigate('NewRequest', { requestId: undefined })}
           >
             <Text style={styles.createButtonIcon}>+</Text>
             <View style={styles.createButtonText}>
@@ -261,7 +261,7 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
-              onPress={() => navigation.navigate('NewRequest')}
+              onPress={() => navigation.navigate('NewRequest', { requestId: undefined })}
             >
               <Text style={styles.emptyButtonText}>Create First Request</Text>
             </TouchableOpacity>
@@ -272,7 +272,7 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
       <BottomNavBar
         items={[
           { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
-          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
+          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest', { requestId: undefined }) },
           { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
         ]}
       />

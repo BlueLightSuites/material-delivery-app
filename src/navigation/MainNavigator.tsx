@@ -26,7 +26,9 @@ export type MainStackParamList = {
   
   // Contractor
   RequestList: undefined;
-  NewRequest: undefined;
+  // requestId switches the same wizard into edit mode rather than
+  // duplicating 300 lines of form UI in a second screen.
+  NewRequest: { requestId?: string } | undefined;
   Tracking: { requestId: string };
 };
 
@@ -92,9 +94,9 @@ const MainNavigator: React.FC<MainNavigatorProps> = ({ user }) => {
           <Stack.Screen
             name="NewRequest"
             component={NewRequest}
-            options={{
-              title: 'New Request',
-            }}
+            options={({ route }) => ({
+              title: route.params?.requestId ? 'Edit Request' : 'New Request',
+            })}
           />
           <Stack.Screen
             name="Tracking"

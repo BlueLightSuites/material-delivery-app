@@ -137,7 +137,7 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
 
   const navItems = [
     { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
-    { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest') },
+    { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest', { requestId: undefined }) },
     { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
   ];
 
@@ -372,6 +372,15 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
           )}
         </View>
 
+        {request.status === 'pending' && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => navigation.navigate('NewRequest', { requestId: requestId })}
+          >
+            <Text style={styles.editButtonText}>Edit request</Text>
+          </TouchableOpacity>
+        )}
+
         {canCancel && (
           <TouchableOpacity
             style={styles.cancelButton}
@@ -487,6 +496,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     lineHeight: 20,
+  },
+  editButton: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#0066CC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0066CC',
   },
   cancelButton: {
     marginHorizontal: 20,
