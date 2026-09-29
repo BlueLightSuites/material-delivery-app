@@ -28,6 +28,7 @@ import {
   isCancelled,
 } from '../../models/deliveryStatus';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import DeliveryMap from '../../components/map/MapView';
 import { RatingPrompt, RatingBadge } from '../../components/job/Rating';
 import {
   submitRating,
@@ -372,6 +373,25 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             />
           </View>
         )}
+
+        <DeliveryMap
+          pickup={
+            request.pickup_lat != null && request.pickup_lng != null
+              ? { lat: request.pickup_lat, lng: request.pickup_lng }
+              : null
+          }
+          dropoff={
+            request.dropoff_lat != null && request.dropoff_lng != null
+              ? { lat: request.dropoff_lat, lng: request.dropoff_lng }
+              : null
+          }
+          driver={
+            isLive && request.driver_lat != null && request.driver_lng != null
+              ? { lat: request.driver_lat, lng: request.driver_lng }
+              : null
+          }
+          driverStale={!!driverLocation?.stale}
+        />
 
         {driverLocation && (
           <View style={styles.card}>
