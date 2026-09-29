@@ -1,10 +1,10 @@
 # Roadmap to a usable Uber-like delivery platform
 
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-28
 Every item below is tracked as a GitHub issue in [BlueLightSuites/material-delivery-app](https://github.com/BlueLightSuites/material-delivery-app/issues), labeled `phase-1`/`phase-2`/`phase-3`. Issue numbers are linked inline.
 See [STATUS.md](./STATUS.md) first — it's the verified inventory of what's actually built. This file is the plan for what's left, ordered by what's actually blocking a working product.
 
-The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. That loop now works end to end against the live database, including live driver position and an ETA, and a contractor can edit or cancel a request. What's missing is payment, ratings, a map, and verified push notifications.
+The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. That loop now works end to end against the live database, including live driver position on a map and an ETA, a contractor can edit or cancel a request, and both sides rate each other. What's missing is payment and verified push notifications.
 
 Phases are ordered by dependency, not by size — Phase 1 is the whole reason this is a two-sided marketplace and not just a form. Don't start Phase 2 or 3 work before Phase 1 closes the loop.
 
@@ -51,7 +51,7 @@ Without this phase, a driver account is useless and the app is just a contractor
 - **Status:** Done
 - **File:** `src/screens/Contractor/Tracking.tsx` — status badge, a plain-language line for the current step, and a four-step progress timeline, plus route, trailer requirement, request time, and notes. Refetches on focus and pull-to-refresh.
 - **Shared:** `src/models/deliveryStatus.ts` holds the status vocabulary (order, labels, colors, contractor-facing descriptions). `RequestList` previously had its own inline copy of the colors and labels; both screens now read from the one module, so a status can't be orange on one screen and blue on the other. `RequestList`'s filter tabs are derived from that same order, which is how `in_transit` ended up with no tab in the first place.
-- **Deliberately no map yet.** With no driver location on the wire, a map could only show pickup and dropoff — two fixed points the contractor typed in themselves. `MapView.tsx` stays empty until there's something moving to plot, so it gets built once against live positions rather than built for static pins and rebuilt later. That's part of [#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8).
+- **Map deferred at the time**, until there was live driver position to plot, so it was built once against moving data rather than for static pins. Now done — see [#41](https://github.com/BlueLightSuites/material-delivery-app/issues/41) below.
 - **Not included:** live updates. A contractor sitting on the screen sees stale data until they refresh.
 
 ### 6. `users` table migration ([#6](https://github.com/BlueLightSuites/material-delivery-app/issues/6))
@@ -117,6 +117,16 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 - **Telling the driver:** push plus, more reliably, a notice that persists in their jobs list until acknowledged (`driver_ack_cancelled_at`, `20260915120000`). Push alone can't reach a simulator, a driver who declined notifications, or an offline phone.
 - **Open question on [#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10):** the driver is told their trip was called off but nothing about whether they're paid for the drive. Needs a compensation policy.
 
+### Map view for live tracking ([#41](https://github.com/BlueLightSuites/material-delivery-app/issues/41))
+
+- **Status:** Done
+- **File:** `src/components/map/MapView.tsx`, shown on the contractor's `Tracking.tsx`. Plots pickup, dropoff, and the driver while a job is live, with a dashed straight line between pickup and dropoff. The driver marker dims once the fix is stale.
+- **Apple Maps via the platform default provider** — no key, no billing. Android would need a Google Maps key (the same one [#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10) and [#13](https://github.com/BlueLightSuites/material-delivery-app/issues/13) would use), but there's no Android project yet.
+- **The region is set once, not driven by position updates** — a map that recentres on every fix fights the user as soon as they pan. A Recenter button fits everything back into frame on demand.
+- The line is straight, not a road route: drawing a route would need a directions API and would imply we know the driver's path, which we don't.
+- Requests with no coordinates (created before geocoding shipped) render no map rather than an empty one.
+- Verified on the iOS simulator (2026-09-28) with the `simctl location` route from #8: the truck marker moved and the ETA counted down in step, and Recenter framed all three points. That walk caught the original route-line colour being invisible against Apple Maps' water and roads.
+
 ---
 
 ## Phase 3 — Polish and scale (do after the marketplace actually works)
@@ -139,4 +149,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 Two things that walk exposed, both now fixed, both worth remembering as a pattern: accepting a job removed it from the only list that could reach it, and `User.id` meant the auth UUID on some sign-in paths and the `users` table's bigint key on others. Neither showed up in code review or type-checking — the first because every piece worked in isolation, the second because a `userData as User` cast asserted away the mismatch. Walking the actual user path found both.
 
-Next up is Phase 2, where **[#8](https://github.com/BlueLightSuites/material-delivery-app/issues/8) (live driver location)** is the natural first move: it's what makes tracking live rather than pull-to-refresh, and it's the prerequisite for the map that `src/components/map/MapView.tsx` is still an empty placeholder for. Note it needs schema work too — nothing currently stores a driver's position.
+Phase 2 is down to two items. **[#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9) (push)** needs one EAS device build to verify — which will also surface how much of the SDK-age problem ([#42](https://github.com/BlueLightSuites/material-delivery-app/issues/42)) bites on real hardware. **[#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10) (payments)** is designed but blocked on business decisions (pricing constants, cancellation compensation, liability, terms), which can be settled in parallel.
