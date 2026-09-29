@@ -38,7 +38,6 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 
 - `src/services/payments/index.ts`
 - `src/components/payments/PaymentForm.tsx`
-- `src/services/api/deliveries.ts` (entire file is commented out)
 
 ## What's built but disconnected (dead code)
 

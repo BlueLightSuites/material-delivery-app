@@ -1,10 +1,6 @@
 /**
  * The status vocabulary `delivery_requests.status` actually uses, and how
  * to present it.
- *
- * Not to be confused with the `status` fields on Delivery.ts / Job.ts,
- * which use different words entirely ('scheduled', 'open', 'delivered')
- * and belong to models nothing live imports.
  */
 
 /**
