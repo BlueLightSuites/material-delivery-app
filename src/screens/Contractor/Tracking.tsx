@@ -143,12 +143,6 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
     setRefreshing(false);
   };
 
-  const navItems = [
-    { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
-    { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest', { requestId: undefined }) },
-    { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
-  ];
-
   const [cancelling, setCancelling] = useState(false);
   const [driverRating, setDriverRating] = useState<CounterpartyRating | null>(null);
   const [alreadyRated, setAlreadyRated] = useState(true);
@@ -230,7 +224,7 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#0066CC" />
         </View>
-        <BottomNavBar items={navItems} />
+        <BottomNavBar role="contractor" active="requests" />
       </SafeAreaView>
     );
   }
@@ -250,7 +244,7 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
             <Text style={styles.primaryButtonText}>Back to Requests</Text>
           </TouchableOpacity>
         </View>
-        <BottomNavBar items={navItems} />
+        <BottomNavBar role="contractor" active="requests" />
       </SafeAreaView>
     );
   }
@@ -473,7 +467,7 @@ const Tracking: React.FC<TrackingProps> = ({ navigation, route }) => {
           </TouchableOpacity>
         )}
       </ScrollView>
-      <BottomNavBar items={navItems} />
+      <BottomNavBar role="contractor" active="requests" />
     </SafeAreaView>
   );
 };

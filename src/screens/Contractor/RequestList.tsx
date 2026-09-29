@@ -269,13 +269,7 @@ const RequestList: React.FC<RequestListProps> = ({ navigation }) => {
         )}
       </ScrollView>
 
-      <BottomNavBar
-        items={[
-          { key: 'requests', icon: '📋', label: 'Requests', onPress: () => navigation.navigate('RequestList') },
-          { key: 'new', icon: '➕', label: 'New', onPress: () => navigation.navigate('NewRequest', { requestId: undefined }) },
-          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
-        ]}
-      />
+      <BottomNavBar role="contractor" active="requests" />
     </SafeAreaView>
   );
 };

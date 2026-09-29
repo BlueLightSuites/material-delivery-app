@@ -317,13 +317,7 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
         )}
       </View>
 
-      <BottomNavBar
-        items={[
-          { key: 'jobs', icon: '🚚', label: 'Jobs', onPress: () => navigation.navigate('JobsNearby') },
-          { key: 'earnings', icon: '💰', label: 'Earnings', onPress: () => navigation.navigate('Earnings') },
-          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
-        ]}
-      />
+      <BottomNavBar role="driver" active="jobs" />
     </SafeAreaView>
   );
 };

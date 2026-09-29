@@ -17,13 +17,7 @@ const Earnings: React.FC<EarningsProps> = ({ navigation }) => {
         <Text style={styles.title}>My Earnings</Text>
         <Text style={styles.subtitle}>Coming soon...</Text>
       </View>
-      <BottomNavBar
-        items={[
-          { key: 'jobs', icon: '🚚', label: 'Jobs', onPress: () => navigation.navigate('JobsNearby') },
-          { key: 'earnings', icon: '💰', label: 'Earnings', onPress: () => navigation.navigate('Earnings') },
-          { key: 'profile', icon: '👤', label: 'Profile', onPress: () => navigation.navigate('Profile') },
-        ]}
-      />
+      <BottomNavBar role="driver" active="earnings" />
     </SafeAreaView>
   );
 };
