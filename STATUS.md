@@ -39,10 +39,6 @@ Confirmed empty — not partially done, literally 0 lines of logic:
 - `src/services/payments/index.ts`
 - `src/components/payments/PaymentForm.tsx`
 
-## What's built but disconnected (dead code)
-
-- **Redux** (`@reduxjs/toolkit`, `react-redux`, `src/store/`, `src/store/slices/authSlice.ts`, `jobsSlice.ts`) — fully scaffolded, **never imported anywhere**. `AuthContext` + component-local state is what the app actually runs on. Either wire it up for real state that needs it (job feeds, real-time delivery status) or delete it — right now it's dead weight that will mislead the next person who reads the codebase.
-
 ## Gaps that block basic usability, not just "nice to have"
 
 - **Driver location is foreground-only.** Reporting runs while the driver has the job detail screen open; backgrounding the app stops it, and the contractor sees a "last known position" warning once a fix is over two minutes old. Background reporting needs the "always" permission plus a background-mode entitlement and a much harder App Store justification, so it was deliberately deferred.
