@@ -101,7 +101,7 @@ const DeliveryMap: React.FC<DeliveryMapProps> = ({ pickup, dropoff, driver, driv
               { latitude: pickup.lat, longitude: pickup.lng },
               { latitude: dropoff.lat, longitude: dropoff.lng },
             ]}
-            strokeColor="#B8CFE8"
+            strokeColor="#0066CC"
             strokeWidth={3}
             lineDashPattern={[6, 6]}
           />
