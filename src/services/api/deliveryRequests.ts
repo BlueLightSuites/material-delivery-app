@@ -103,19 +103,31 @@ export async function createDeliveryRequest(
 }
 
 /**
+ * What happened when a driver tried to accept a job. "Taken" and the two
+ * refusals need different answers on screen, and a network failure is
+ * none of them - it shouldn't tell the driver someone beat them to it.
+ */
+export type AcceptOutcome =
+  | { kind: 'accepted'; request: DeliveryRequest }
+  | { kind: 'taken' }
+  | { kind: 'not_verified' }
+  | { kind: 'trailer_required' }
+  | { kind: 'failed' };
+
+/**
  * Accept a pending delivery request as the current (driver) user.
  *
- * Calls the `accept_delivery_request` Postgres RPC (see
- * sql/enable_driver_job_matching.sql), which atomically sets
- * assigned_driver_id/status only if the request is still 'pending'.
- * Returns the updated request, or null if it was already taken by
- * another driver (or the request doesn't exist) — this is a normal,
- * expected outcome, not an error.
+ * Calls the `accept_delivery_request` Postgres RPC, which atomically sets
+ * assigned_driver_id/status only if the request is still 'pending'. Zero
+ * rows back means another driver took it first - a normal outcome, not
+ * an error. Since 20261019000000 the RPC also refuses unverified drivers
+ * and trailer jobs for drivers without one, identified by the error's
+ * hint.
  */
 export async function acceptDeliveryRequest(
   accessToken: string,
   requestId: string
-): Promise<DeliveryRequest | null> {
+): Promise<AcceptOutcome> {
   try {
     const response = await retryWithBackoff(async () => {
       return await axios.post(
@@ -132,14 +144,18 @@ export async function acceptDeliveryRequest(
     });
 
     const accepted = Array.isArray(response.data) ? response.data[0] : response.data;
-    return (accepted as DeliveryRequest) || null;
+    return accepted ? { kind: 'accepted', request: accepted as DeliveryRequest } : { kind: 'taken' };
   } catch (error: any) {
+    const hint = error?.response?.data?.hint;
+    if (hint === 'driver_not_verified' || hint === 'trailer_required') {
+      return { kind: hint === 'driver_not_verified' ? 'not_verified' : 'trailer_required' };
+    }
     console.error('acceptDeliveryRequest error', {
       status: error?.response?.status,
       data: error?.response?.data,
       message: error?.message,
     });
-    return null;
+    return { kind: 'failed' };
   }
 }
 

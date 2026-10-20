@@ -129,6 +129,24 @@ const Profile: React.FC<ProfileProps> = ({ navigation }) => {
               <Text style={styles.menuArrow}>›</Text>
             </TouchableOpacity>
 
+            {user?.role === 'driver' && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigation.navigate('DriverVerification')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Text style={styles.menuIcon}>🚚</Text>
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemTitle}>Vehicle & Documents</Text>
+                    <Text style={styles.menuItemSubtitle}>
+                      Verification to accept jobs
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.menuArrow}>›</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.menuItem}
               onPress={handleChangePassword}

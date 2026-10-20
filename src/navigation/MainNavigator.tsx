@@ -9,6 +9,7 @@ import Profile from '../screens/Common/Profile';
 import JobsNearby from '../screens/Driver/JobsNearby';
 import JobDetail from '../screens/Driver/JobDetail';
 import Earnings from '../screens/Driver/Earnings';
+import DriverVerification from '../screens/Driver/Verification';
 
 // Contractor screens
 import RequestList from '../screens/Contractor/RequestList';
@@ -23,6 +24,7 @@ export type MainStackParamList = {
   JobsNearby: undefined;
   JobDetail: { jobId: string };
   Earnings: undefined;
+  DriverVerification: undefined;
   
   // Contractor
   RequestList: undefined;
@@ -77,6 +79,13 @@ const MainNavigator: React.FC<MainNavigatorProps> = ({ user }) => {
             component={Earnings}
             options={{
               title: 'My Earnings',
+            }}
+          />
+          <Stack.Screen
+            name="DriverVerification"
+            component={DriverVerification}
+            options={{
+              title: 'Vehicle & Documents',
             }}
           />
         </>

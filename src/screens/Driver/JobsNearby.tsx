@@ -22,6 +22,8 @@ import {
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { isVerifiedDriver } from '../../services/api/driverVerification';
+import { alertAcceptRefusal } from './acceptRefusalAlert';
 import { getCurrentPosition, distanceInMiles, Coordinates } from '../../services/geolocation';
 
 type JobsNearbyNavigationProp = StackNavigationProp<MainStackParamList, 'JobsNearby'>;
@@ -39,6 +41,9 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [driverPosition, setDriverPosition] = useState<Coordinates | null>(null);
+  // Null until known, so the setup banner doesn't flash on every load
+  // for drivers who are already verified.
+  const [verified, setVerified] = useState<boolean | null>(null);
 
   // Asked for once on mount rather than on every focus, so a driver who
   // declines the permission prompt isn't re-prompted every time they come
@@ -57,7 +62,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
       // Accepting a job flips it out of 'pending', so the open-jobs query
       // alone would leave a driver with no route back to a job they've
       // taken - and no way to reach the status actions on it.
-      const [pending, mine, cancelled] = await Promise.all([
+      const [pending, mine, cancelled, isVerified] = await Promise.all([
         getDeliveryRequests(accessToken, 'status=eq.pending'),
         user?.auth_id
           ? getDeliveryRequests(
@@ -74,7 +79,12 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
               `assigned_driver_id=eq.${user.auth_id}&status=eq.cancelled&driver_ack_cancelled_at=is.null`
             )
           : Promise.resolve([]),
+        // Rechecked on every focus, so coming back from the verification
+        // screen - or a reviewer approving the last document - clears the
+        // banner without a restart.
+        isVerifiedDriver(accessToken),
       ]);
+      setVerified(isVerified);
       setJobs(pending);
       setActiveJobs(mine);
       setCancelledJobs(cancelled);
@@ -115,17 +125,21 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
 
     setAcceptingId(jobId);
     try {
-      const accepted = await acceptDeliveryRequest(accessToken, jobId);
+      const outcome = await acceptDeliveryRequest(accessToken, jobId);
 
-      if (accepted) {
-        setJobs((prev) => prev.filter((job) => job.id !== jobId));
+      if (outcome.kind === 'accepted') {
         Alert.alert('Job Accepted', "You're now assigned to this delivery.");
-      } else {
+        // Refetched rather than just dropped from the list, so it shows
+        // up under Your Active Jobs straight away.
+        fetchJobs();
+      } else if (outcome.kind === 'taken') {
         Alert.alert(
           'Already Taken',
           'Another driver accepted this job first. Refreshing the list.'
         );
         fetchJobs();
+      } else {
+        alertAcceptRefusal(outcome, () => navigation.navigate('DriverVerification'));
       }
     } finally {
       setAcceptingId(null);
@@ -211,6 +225,19 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
             {jobs.length} pending {jobs.length === 1 ? 'request' : 'requests'}
           </Text>
         </View>
+
+        {verified === false && (
+          <TouchableOpacity
+            style={styles.setupBanner}
+            onPress={() => navigation.navigate('DriverVerification')}
+          >
+            <Text style={styles.setupTitle}>Finish setting up to accept jobs</Text>
+            <Text style={styles.setupBody}>
+              Add your vehicle and upload your license, registration, and insurance for review.
+            </Text>
+            <Text style={styles.viewDetailsText}>Get verified →</Text>
+          </TouchableOpacity>
+        )}
 
         {cancelledJobs.length > 0 && (
           <View style={styles.activeSection}>
@@ -326,6 +353,26 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#999999',
+  },
+  setupBanner: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#0066CC',
+    backgroundColor: '#F5F9FF',
+    gap: 6,
+  },
+  setupTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  setupBody: {
+    fontSize: 13,
+    color: '#666666',
+    lineHeight: 19,
   },
   cancelledCard: {
     backgroundColor: '#FFF6F5',

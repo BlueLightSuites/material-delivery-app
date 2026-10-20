@@ -20,6 +20,7 @@ import {
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
+import { alertAcceptRefusal } from './acceptRefusalAlert';
 import { useDriverLocationReporter } from '../../hooks/useDriverLocationReporter';
 import { subscribeToDeliveryRequest } from '../../services/realtime/supabaseRealtime';
 import { RatingPrompt } from '../../components/job/Rating';
@@ -135,16 +136,18 @@ const JobDetail: React.FC<JobDetailProps> = ({ navigation, route }) => {
     }
     setActionInFlight(true);
     try {
-      const accepted = await acceptDeliveryRequest(accessToken, jobId);
-      if (accepted) {
-        setJob(accepted);
+      const outcome = await acceptDeliveryRequest(accessToken, jobId);
+      if (outcome.kind === 'accepted') {
+        setJob(outcome.request);
         Alert.alert('Job Accepted', "You're now assigned to this delivery.");
-      } else {
+      } else if (outcome.kind === 'taken') {
         Alert.alert(
           'Already Taken',
           'Another driver accepted this job first.',
           [{ text: 'OK', onPress: () => navigation.navigate('JobsNearby') }]
         );
+      } else {
+        alertAcceptRefusal(outcome, () => navigation.navigate('DriverVerification'));
       }
     } finally {
       setActionInFlight(false);
