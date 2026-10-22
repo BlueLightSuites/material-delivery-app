@@ -23,6 +23,7 @@ interface AuthContextType {
   setAccessToken: (token: string | null) => void;
   login: (user: User, accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (changes: Partial<User>) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -178,6 +179,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   };
 
+  // For profile changes made after sign-in. Persisted with the session
+  // because launch restores the user from it rather than refetching -
+  // otherwise the old value comes back on the next restart.
+  const updateUser = async (changes: Partial<User>) => {
+    if (!user) {
+      return;
+    }
+    const nextUser = { ...user, ...changes };
+    setUser(nextUser);
+    if (accessToken && refreshTokenRef.current) {
+      await saveSession({
+        user: nextUser,
+        accessToken,
+        refreshToken: refreshTokenRef.current,
+      });
+    }
+  };
+
   const logout = async () => {
     // Before the session is torn down, while the token still authorizes
     // the write - otherwise the next person to sign in on this device
@@ -203,6 +222,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setAccessToken,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}

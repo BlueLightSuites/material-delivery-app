@@ -137,12 +137,17 @@ export interface RefreshResponse {
  * Sign up a new user with Supabase Authentication
  */
 export async function signUp(data: SignUpData): Promise<AuthResponse> {
+  const name = data.name.trim();
   try {
-    // Create user with Supabase Auth with retry logic
+    // Create user with Supabase Auth with retry logic. Name and role go
+    // into the auth user's metadata as well as the profile row: if the
+    // profile insert below fails, sign-in recreates the row from this
+    // metadata, and without them it came back nameless.
     const response = await retryWithBackoff(async () => {
       return await axiosInstance.post('/signup', {
         email: data.email,
         password: data.password,
+        data: { name, role: data.role },
       });
     });
 
@@ -166,7 +171,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
     await createOrUpdateUserProfile(
       authUser.id,
       data.email,
-      data.name,
+      name,
       data.role,
       accessToken
     );
@@ -177,7 +182,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
       id: authUser.id,
       auth_id: authUser.id,
       email: data.email,
-      name: data.name,
+      name,
       role: data.role,
     };
 

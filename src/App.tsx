@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthNavigator from './navigation/AuthNavigator';
 import MainNavigator from './navigation/MainNavigator';
+import CompleteProfile from './screens/Common/CompleteProfile';
 
 const AppContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -21,10 +22,14 @@ const AppContent: React.FC = () => {
     <>
       <StatusBar style="dark" />
       <NavigationContainer>
-        {user ? (
-          <MainNavigator user={user} />
-        ) : (
+        {!user ? (
           <AuthNavigator />
+        ) : !user.name?.trim() ? (
+          // Ahead of everything else: the account is incomplete until it
+          // has a name (see 20261023180000).
+          <CompleteProfile />
+        ) : (
+          <MainNavigator user={user} />
         )}
       </NavigationContainer>
     </>
