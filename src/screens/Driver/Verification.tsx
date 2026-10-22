@@ -28,6 +28,8 @@ import {
   VehicleType,
   DocumentType,
   DriverDocument,
+  VEHICLE_TYPE_LABELS,
+  DOCUMENT_LABELS,
 } from '../../services/api/driverVerification';
 
 type VerificationNavigationProp = StackNavigationProp<MainStackParamList, 'DriverVerification'>;
@@ -37,16 +39,16 @@ interface VerificationProps {
 }
 
 const VEHICLE_TYPES: { value: VehicleType; label: string; icon: string }[] = [
-  { value: 'pickup', label: 'Pickup truck', icon: '🛻' },
-  { value: 'flatbed', label: 'Flatbed', icon: '🚚' },
-  { value: 'box_truck', label: 'Box truck', icon: '📦' },
-  { value: 'dump_truck', label: 'Dump truck', icon: '🚛' },
+  { value: 'pickup', label: VEHICLE_TYPE_LABELS.pickup, icon: '🛻' },
+  { value: 'flatbed', label: VEHICLE_TYPE_LABELS.flatbed, icon: '🚚' },
+  { value: 'box_truck', label: VEHICLE_TYPE_LABELS.box_truck, icon: '📦' },
+  { value: 'dump_truck', label: VEHICLE_TYPE_LABELS.dump_truck, icon: '🚛' },
 ];
 
 const DOCUMENTS: { type: DocumentType; label: string; hint: string }[] = [
-  { type: 'license', label: "Driver's license", hint: 'Front of the card, all four corners visible' },
-  { type: 'registration', label: 'Vehicle registration', hint: 'For the vehicle you’ll deliver with' },
-  { type: 'insurance', label: 'Proof of insurance', hint: 'Insurance card or declarations page' },
+  { type: 'license', label: DOCUMENT_LABELS.license, hint: 'Front of the card, all four corners visible' },
+  { type: 'registration', label: DOCUMENT_LABELS.registration, hint: 'For the vehicle you’ll deliver with' },
+  { type: 'insurance', label: DOCUMENT_LABELS.insurance, hint: 'Insurance card or declarations page' },
 ];
 
 const formatDate = (isoDate: string) =>

@@ -29,8 +29,16 @@ const DRIVER_TABS = [
   { key: 'profile', icon: '👤', label: 'Profile', go: (n) => n.navigate('Profile') },
 ] as const satisfies readonly NavTab<string>[];
 
+const ADMIN_TABS = [
+  { key: 'review', icon: '📄', label: 'Review', go: (n) => n.navigate('ReviewQueue') },
+  { key: 'profile', icon: '👤', label: 'Profile', go: (n) => n.navigate('Profile') },
+] as const satisfies readonly NavTab<string>[];
+
+const TABS = { contractor: CONTRACTOR_TABS, driver: DRIVER_TABS, admin: ADMIN_TABS };
+
 type ContractorTab = (typeof CONTRACTOR_TABS)[number]['key'];
 type DriverTab = (typeof DRIVER_TABS)[number]['key'];
+type AdminTab = (typeof ADMIN_TABS)[number]['key'];
 
 /**
  * `active` is the tab a screen belongs to, not necessarily one it was
@@ -39,7 +47,8 @@ type DriverTab = (typeof DRIVER_TABS)[number]['key'];
  */
 type BottomNavBarProps =
   | { role: 'contractor'; active: ContractorTab }
-  | { role: 'driver'; active: DriverTab };
+  | { role: 'driver'; active: DriverTab }
+  | { role: 'admin'; active: AdminTab };
 
 /**
  * Shared bottom tab bar, drawn the same way on every top-level screen in a
@@ -49,7 +58,7 @@ type BottomNavBarProps =
  */
 const BottomNavBar: React.FC<BottomNavBarProps> = ({ role, active }) => {
   const navigation = useNavigation<Navigation>();
-  const tabs: readonly NavTab<string>[] = role === 'contractor' ? CONTRACTOR_TABS : DRIVER_TABS;
+  const tabs: readonly NavTab<string>[] = TABS[role];
 
   return (
     <View style={styles.bottomNav}>

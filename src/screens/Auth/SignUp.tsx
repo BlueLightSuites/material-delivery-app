@@ -31,7 +31,9 @@ interface FormErrors {
   role?: string;
 }
 
-type UserRole = 'contractor' | 'driver' | 'admin';
+// Admin isn't offered: it's granted in the database, and the users
+// INSERT policy refuses it at signup (20261023000000).
+type UserRole = 'contractor' | 'driver';
 
 const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
   const { setUser, setAccessToken, login } = useAuth();
@@ -195,7 +197,7 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Account Type</Text>
               <View style={styles.roleContainer}>
-                {(['driver', 'contractor', 'admin'] as const).map((roleOption) => (
+                {(['driver', 'contractor'] as const).map((roleOption) => (
                   <TouchableOpacity
                     key={roleOption}
                     style={[

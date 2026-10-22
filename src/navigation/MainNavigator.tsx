@@ -1,6 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { User } from '../models/User';
+import { ReviewQueueItem } from '../services/api/documentReview';
 
 // Common screens
 import Profile from '../screens/Common/Profile';
@@ -15,6 +16,10 @@ import DriverVerification from '../screens/Driver/Verification';
 import RequestList from '../screens/Contractor/RequestList';
 import NewRequest from '../screens/Contractor/NewRequest';
 import Tracking from '../screens/Contractor/Tracking';
+
+// Admin screens
+import ReviewQueue from '../screens/Admin/ReviewQueue';
+import DocumentReview from '../screens/Admin/DocumentReview';
 
 export type MainStackParamList = {
   // Common
@@ -32,6 +37,10 @@ export type MainStackParamList = {
   // duplicating 300 lines of form UI in a second screen.
   NewRequest: { requestId?: string } | undefined;
   Tracking: { requestId: string };
+
+  // Admin
+  ReviewQueue: undefined;
+  DocumentReview: { item: ReviewQueueItem };
 };
 
 const Stack = createStackNavigator<MainStackParamList>();
@@ -43,6 +52,10 @@ interface MainNavigatorProps {
 const MainNavigator: React.FC<MainNavigatorProps> = ({ user }) => {
   const isDriver = user?.role === 'driver';
   const isContractor = user?.role === 'contractor';
+  // Only decides which screens exist. What an admin can actually see and
+  // do is checked server-side by is_admin(), so a client claiming the
+  // role gets an empty, refusing queue.
+  const isAdmin = user?.role === 'admin';
 
   return (
     <Stack.Navigator
@@ -112,6 +125,25 @@ const MainNavigator: React.FC<MainNavigatorProps> = ({ user }) => {
             component={Tracking}
             options={{
               title: 'Track Delivery',
+            }}
+          />
+        </>
+      )}
+
+      {isAdmin && (
+        <>
+          <Stack.Screen
+            name="ReviewQueue"
+            component={ReviewQueue}
+            options={{
+              title: 'Review',
+            }}
+          />
+          <Stack.Screen
+            name="DocumentReview"
+            component={DocumentReview}
+            options={{
+              title: 'Review Document',
             }}
           />
         </>

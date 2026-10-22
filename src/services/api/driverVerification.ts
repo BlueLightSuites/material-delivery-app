@@ -9,6 +9,21 @@ export type VehicleType = 'pickup' | 'flatbed' | 'box_truck' | 'dump_truck';
 export type DocumentType = 'license' | 'registration' | 'insurance';
 export type DocumentStatus = 'pending' | 'approved' | 'rejected';
 
+// Shared by the driver's own screen and the admin review screens, so the
+// two never call the same document by different names.
+export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+  pickup: 'Pickup truck',
+  flatbed: 'Flatbed',
+  box_truck: 'Box truck',
+  dump_truck: 'Dump truck',
+};
+
+export const DOCUMENT_LABELS: Record<DocumentType, string> = {
+  license: "Driver's license",
+  registration: 'Vehicle registration',
+  insurance: 'Proof of insurance',
+};
+
 export interface Vehicle {
   vehicle_type: VehicleType | null;
   has_trailer: boolean;
