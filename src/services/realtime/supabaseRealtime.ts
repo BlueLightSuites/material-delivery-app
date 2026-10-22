@@ -37,9 +37,11 @@ export function getRealtimeClient(): SupabaseClient {
   return client;
 }
 
-export interface DeliveryRequestSubscription {
+export interface RealtimeSubscription {
   unsubscribe: () => void;
 }
+
+export type DeliveryRequestSubscription = RealtimeSubscription;
 
 /**
  * Watch one delivery request row for changes, calling `onChange` with
@@ -84,6 +86,52 @@ export function subscribeToDeliveryRequest(
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.warn('subscribeToDeliveryRequest: channel status', status);
         onError?.();
+      }
+    });
+
+  return {
+    unsubscribe: () => {
+      supabase.removeChannel(channel);
+    },
+  };
+}
+
+/**
+ * Watch the signed-in driver's documents, calling `onChange` whenever one
+ * is submitted or reviewed. Callers refetch rather than patching state
+ * from the payload: verification depends on all three documents and the
+ * vehicle together, and the server's answer is the one that counts.
+ *
+ * Same token requirement as above - row-level security limits the stream
+ * to the driver's own documents, and without their token it carries
+ * nothing.
+ */
+export function subscribeToDriverDocuments(
+  accessToken: string,
+  driverAuthId: string,
+  onChange: () => void
+): RealtimeSubscription {
+  const supabase = getRealtimeClient();
+  supabase.realtime.setAuth(accessToken);
+
+  const channel = supabase
+    .channel(`driver_documents:${driverAuthId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'driver_documents',
+        filter: `driver_auth_id=eq.${driverAuthId}`,
+      },
+      () => onChange()
+    )
+    .subscribe((status) => {
+      // No polling fallback: both screens using this also refetch on
+      // focus and pull-to-refresh, so a failed channel costs immediacy,
+      // not correctness.
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn('subscribeToDriverDocuments: channel status', status);
       }
     });
 

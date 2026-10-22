@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -30,7 +31,9 @@ import {
   DriverDocument,
   VEHICLE_TYPE_LABELS,
   DOCUMENT_LABELS,
+  isDocumentExpired as isExpired,
 } from '../../services/api/driverVerification';
+import { subscribeToDriverDocuments } from '../../services/realtime/supabaseRealtime';
 
 type VerificationNavigationProp = StackNavigationProp<MainStackParamList, 'DriverVerification'>;
 
@@ -57,9 +60,6 @@ const formatDate = (isoDate: string) =>
     day: 'numeric',
     year: 'numeric',
   });
-
-const isExpired = (doc: DriverDocument) =>
-  !!doc.expires_on && new Date(`${doc.expires_on}T23:59:59`) < new Date();
 
 /** What a driver needs to know about one document, in one line. */
 const describeDocument = (doc: DriverDocument | undefined): { text: string; color: string } => {
@@ -95,34 +95,56 @@ const Verification: React.FC<VerificationProps> = () => {
   const [trailerCapacity, setTrailerCapacity] = useState('');
   const [savingVehicle, setSavingVehicle] = useState(false);
   const [uploadingType, setUploadingType] = useState<DocumentType | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const authId = user?.auth_id;
+
+  // Documents and verification only. Kept apart from the vehicle so a
+  // review landing mid-edit doesn't reset the vehicle form under the
+  // driver's fingers.
+  const loadDocuments = useCallback(async () => {
+    if (!accessToken) {
+      return;
+    }
+    const [docs, isVerified] = await Promise.all([
+      getDriverDocuments(accessToken),
+      isVerifiedDriver(accessToken),
+    ]);
+    setDocuments(docs);
+    setVerified(isVerified);
+  }, [accessToken]);
 
   const load = useCallback(async () => {
     if (!accessToken || !authId) {
       return;
     }
-    const [vehicle, docs, isVerified] = await Promise.all([
-      getVehicle(accessToken, authId),
-      getDriverDocuments(accessToken),
-      isVerifiedDriver(accessToken),
-    ]);
+    const [vehicle] = await Promise.all([getVehicle(accessToken, authId), loadDocuments()]);
     setSavedVehicle(vehicle);
     setVehicleType(vehicle?.vehicle_type ?? null);
     setHasTrailer(!!vehicle?.has_trailer);
     setTrailerCapacity(vehicle?.trailer_capacity_lbs ? String(vehicle.trailer_capacity_lbs) : '');
-    setDocuments(docs);
-    setVerified(isVerified);
     setLoading(false);
-  }, [accessToken, authId]);
+  }, [accessToken, authId, loadDocuments]);
 
-  // On focus rather than mount, so a review that lands while the driver
-  // is elsewhere in the app shows up when they come back.
+  // Loaded on focus, and kept live while the screen is showing: a
+  // reviewer's decision appears the moment it's made, whether or not a
+  // push notification gets through.
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      if (!accessToken || !authId) {
+        return undefined;
+      }
+      const subscription = subscribeToDriverDocuments(accessToken, authId, loadDocuments);
+      return () => subscription.unsubscribe();
+    }, [load, loadDocuments, accessToken, authId])
   );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   const capacity = parseInt(trailerCapacity, 10);
   const vehicleValid = !!vehicleType && (!hasTrailer || capacity > 0);
@@ -183,7 +205,7 @@ const Verification: React.FC<VerificationProps> = () => {
       setUploadingType(docType);
       const submitted = await uploadDriverDocument(accessToken, authId, docType, result.assets[0].uri);
       if (submitted) {
-        load();
+        loadDocuments();
       } else {
         Alert.alert('Upload failed', 'Check your connection and try again.');
       }
@@ -234,7 +256,11 @@ const Verification: React.FC<VerificationProps> = () => {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
           <View style={[styles.summaryCard, verified && styles.summaryCardVerified]}>
             <Text style={styles.summaryTitle}>{verified ? '✅ Verified' : 'Driver verification'}</Text>
             <Text style={styles.summaryBody}>{summary}</Text>

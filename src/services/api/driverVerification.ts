@@ -42,6 +42,35 @@ export interface DriverDocument {
   reviewed_at: string | null;
 }
 
+export const isDocumentExpired = (doc: DriverDocument) =>
+  !!doc.expires_on && new Date(`${doc.expires_on}T23:59:59`) < new Date();
+
+/**
+ * Where a not-yet-verified driver stands, for the jobs feed banner.
+ * 'action' wins over 'in_review': a driver with one rejected document
+ * and two waiting has something to do now, not something to wait for.
+ */
+export type SetupState =
+  | { kind: 'action'; doc: DriverDocument }
+  | { kind: 'in_review' }
+  | { kind: 'incomplete' };
+
+export function summarizeSetup(documents: DriverDocument[]): SetupState {
+  const needsAction = documents.find(
+    (d) => d.status === 'rejected' || (d.status === 'approved' && isDocumentExpired(d))
+  );
+  if (needsAction) {
+    return { kind: 'action', doc: needsAction };
+  }
+  const allSubmitted = (Object.keys(DOCUMENT_LABELS) as DocumentType[]).every((type) =>
+    documents.some((d) => d.doc_type === type)
+  );
+  if (allSubmitted && documents.some((d) => d.status === 'pending')) {
+    return { kind: 'in_review' };
+  }
+  return { kind: 'incomplete' };
+}
+
 const authHeaders = (accessToken: string) => ({
   'Content-Type': 'application/json',
   apikey: ANON_KEY,

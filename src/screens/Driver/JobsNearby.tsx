@@ -22,7 +22,14 @@ import {
   DeliveryRequest,
 } from '../../services/api/deliveryRequests';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
-import { isVerifiedDriver } from '../../services/api/driverVerification';
+import {
+  isVerifiedDriver,
+  getDriverDocuments,
+  summarizeSetup,
+  SetupState,
+  DOCUMENT_LABELS,
+} from '../../services/api/driverVerification';
+import { subscribeToDriverDocuments } from '../../services/realtime/supabaseRealtime';
 import { alertAcceptRefusal } from './acceptRefusalAlert';
 import { getCurrentPosition, distanceInMiles, Coordinates } from '../../services/geolocation';
 
@@ -44,6 +51,21 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   // Null until known, so the setup banner doesn't flash on every load
   // for drivers who are already verified.
   const [verified, setVerified] = useState<boolean | null>(null);
+  const [setup, setSetup] = useState<SetupState>({ kind: 'incomplete' });
+
+  // Separate from fetchJobs so a review decision arriving live refreshes
+  // the banner without refetching every job.
+  const refreshVerification = React.useCallback(async () => {
+    if (!accessToken) {
+      return;
+    }
+    const [isVerified, documents] = await Promise.all([
+      isVerifiedDriver(accessToken),
+      getDriverDocuments(accessToken),
+    ]);
+    setVerified(isVerified);
+    setSetup(summarizeSetup(documents));
+  }, [accessToken]);
 
   // Asked for once on mount rather than on every focus, so a driver who
   // declines the permission prompt isn't re-prompted every time they come
@@ -62,7 +84,7 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
       // Accepting a job flips it out of 'pending', so the open-jobs query
       // alone would leave a driver with no route back to a job they've
       // taken - and no way to reach the status actions on it.
-      const [pending, mine, cancelled, isVerified] = await Promise.all([
+      const [pending, mine, cancelled] = await Promise.all([
         getDeliveryRequests(accessToken, 'status=eq.pending'),
         user?.auth_id
           ? getDeliveryRequests(
@@ -79,12 +101,10 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
               `assigned_driver_id=eq.${user.auth_id}&status=eq.cancelled&driver_ack_cancelled_at=is.null`
             )
           : Promise.resolve([]),
-        // Rechecked on every focus, so coming back from the verification
-        // screen - or a reviewer approving the last document - clears the
-        // banner without a restart.
-        isVerifiedDriver(accessToken),
+        // Rechecked on every focus too, so coming back from the
+        // verification screen updates the banner without a restart.
+        refreshVerification(),
       ]);
-      setVerified(isVerified);
       setJobs(pending);
       setActiveJobs(mine);
       setCancelledJobs(cancelled);
@@ -104,7 +124,14 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       fetchJobs();
-    }, [accessToken, user?.auth_id])
+      if (!accessToken || !user?.auth_id) {
+        return undefined;
+      }
+      // Live while the feed is showing, so an approval clears the banner
+      // - and a rejection shows its reason - without a refresh.
+      const subscription = subscribeToDriverDocuments(accessToken, user.auth_id, refreshVerification);
+      return () => subscription.unsubscribe();
+    }, [accessToken, user?.auth_id, refreshVerification])
   );
 
   const handleDismissCancelled = async (jobId: string) => {
@@ -228,14 +255,40 @@ const JobsNearby: React.FC<JobsNearbyProps> = ({ navigation }) => {
 
         {verified === false && (
           <TouchableOpacity
-            style={styles.setupBanner}
+            style={[styles.setupBanner, setup.kind === 'action' && styles.setupBannerAction]}
             onPress={() => navigation.navigate('DriverVerification')}
           >
-            <Text style={styles.setupTitle}>Finish setting up to accept jobs</Text>
-            <Text style={styles.setupBody}>
-              Add your vehicle and upload your license, registration, and insurance for review.
-            </Text>
-            <Text style={styles.viewDetailsText}>Get verified →</Text>
+            {setup.kind === 'action' ? (
+              <>
+                <Text style={styles.setupTitle}>
+                  Your {DOCUMENT_LABELS[setup.doc.doc_type].toLowerCase()}{' '}
+                  {setup.doc.status === 'rejected' ? 'wasn’t approved' : 'has expired'}
+                </Text>
+                <Text style={styles.setupBody}>
+                  {setup.doc.status === 'rejected' && setup.doc.rejection_reason
+                    ? `${setup.doc.rejection_reason}. `
+                    : ''}
+                  Upload a new one to start accepting jobs.
+                </Text>
+                <Text style={styles.setupActionLink}>Fix it →</Text>
+              </>
+            ) : setup.kind === 'in_review' ? (
+              <>
+                <Text style={styles.setupTitle}>Your documents are in review</Text>
+                <Text style={styles.setupBody}>
+                  You’ll be able to accept jobs once they’re approved. We’ll let you know.
+                </Text>
+                <Text style={styles.viewDetailsText}>View status →</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.setupTitle}>Finish setting up to accept jobs</Text>
+                <Text style={styles.setupBody}>
+                  Add your vehicle and upload your license, registration, and insurance for review.
+                </Text>
+                <Text style={styles.viewDetailsText}>Get verified →</Text>
+              </>
+            )}
           </TouchableOpacity>
         )}
 
@@ -363,6 +416,15 @@ const styles = StyleSheet.create({
     borderColor: '#0066CC',
     backgroundColor: '#F5F9FF',
     gap: 6,
+  },
+  setupBannerAction: {
+    borderColor: '#E7A9A2',
+    backgroundColor: '#FFF6F5',
+  },
+  setupActionLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8A3B2C',
   },
   setupTitle: {
     fontSize: 15,
