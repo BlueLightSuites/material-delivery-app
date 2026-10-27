@@ -15,14 +15,20 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
  * what would otherwise turn a failed refresh into infinite recursion.
  */
 
-/** Returns a fresh access token, or null if the session is unrecoverable. */
+/**
+ * Returns a fresh access token, or null if none could be had right now -
+ * either the session is over (and has been signed out) or the refresh
+ * failed for a reason worth retrying later, like no network.
+ */
 type RefreshHandler = () => Promise<string | null>;
 
 let refreshHandler: RefreshHandler | null = null;
 let interceptorId: number | null = null;
 
 /**
- * The single in-flight refresh, shared by every caller that needs one.
+ * The single in-flight refresh, shared by every caller that needs one -
+ * the 401 retry below, and AuthContext's timer and foreground check,
+ * which can otherwise fire together on unlock.
  *
  * This is the part that can't be skipped: Supabase rotates refresh
  * tokens, so each refresh consumes the previous one. Without this,
@@ -33,7 +39,7 @@ let interceptorId: number | null = null;
  */
 let inFlightRefresh: Promise<string | null> | null = null;
 
-function refreshOnce(): Promise<string | null> {
+export function refreshOnce(): Promise<string | null> {
   if (!inFlightRefresh) {
     const handler = refreshHandler;
     inFlightRefresh = (handler ? handler() : Promise.resolve(null))

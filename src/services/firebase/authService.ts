@@ -131,6 +131,15 @@ export interface RefreshResponse {
   accessToken: string | null;
   refreshToken: string | null;
   error: string | null;
+  /**
+   * True only when Supabase answered and refused the refresh token -
+   * expired, revoked, or already used. That's the one failure that means
+   * the session is over. A network error, timeout, or server error leaves
+   * this false: the token may well still be good, and treating those as
+   * fatal signed users out every time they unlocked their phone before
+   * its connection was back.
+   */
+  rejected: boolean;
 }
 
 /**
@@ -356,17 +365,23 @@ export async function refreshSession(refreshToken: string): Promise<RefreshRespo
       accessToken: response.data.access_token || null,
       refreshToken: response.data.refresh_token || null,
       error: null,
+      rejected: false,
     };
   } catch (error) {
     console.error('Refresh session error:', error);
     let errorMessage = 'Session expired. Please sign in again.';
+    let rejected = false;
 
     if (axios.isAxiosError(error)) {
       errorMessage =
         error.response?.data?.error_description || error.response?.data?.msg || errorMessage;
+      // GoTrue answers a bad refresh token with 400 (invalid_grant) or
+      // 401. No response at all, or a 5xx, says nothing about the token.
+      const status = error.response?.status;
+      rejected = status === 400 || status === 401;
     }
 
-    return { accessToken: null, refreshToken: null, error: errorMessage };
+    return { accessToken: null, refreshToken: null, error: errorMessage, rejected };
   }
 }
 

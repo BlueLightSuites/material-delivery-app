@@ -5,6 +5,16 @@ const ACCESS_TOKEN_KEY = 'md_access_token';
 const REFRESH_TOKEN_KEY = 'md_refresh_token';
 const USER_KEY = 'md_user';
 
+// Readable from the first unlock after a restart onward, rather than the
+// default of only while unlocked. iOS can launch the app in the
+// background while the phone is locked (prewarming, notification
+// handling), and a session that can't be read then looks exactly like no
+// session: the user is shown sign-in. Still encrypted, still this app's
+// alone, and never copied to another device.
+const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
+
 export interface StoredSession {
   user: User;
   accessToken: string;
@@ -18,10 +28,19 @@ export interface StoredSession {
  */
 export async function saveSession(session: StoredSession): Promise<void> {
   await Promise.all([
-    SecureStore.setItemAsync(ACCESS_TOKEN_KEY, session.accessToken),
-    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, session.refreshToken),
-    SecureStore.setItemAsync(USER_KEY, JSON.stringify(session.user)),
+    writeItem(ACCESS_TOKEN_KEY, session.accessToken),
+    writeItem(REFRESH_TOKEN_KEY, session.refreshToken),
+    writeItem(USER_KEY, JSON.stringify(session.user)),
   ]);
+}
+
+// Delete, then add. Writing over an existing item updates only its value
+// and keeps the accessibility it was created with, so sessions saved
+// before KEYCHAIN_OPTIONS existed would stay unreadable while locked
+// forever. Saves happen at sign-in and on token renewal, not per request.
+async function writeItem(key: string, value: string): Promise<void> {
+  await SecureStore.deleteItemAsync(key);
+  await SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS);
 }
 
 /**

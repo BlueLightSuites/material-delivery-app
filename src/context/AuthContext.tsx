@@ -3,7 +3,11 @@ import { AppState } from 'react-native';
 import { User } from '../models/User';
 import { loadSession, saveSession, clearSession } from '../services/auth/sessionService';
 import { refreshSession } from '../services/firebase/authService';
-import { installAuthInterceptor, uninstallAuthInterceptor } from '../services/api/authInterceptor';
+import {
+  installAuthInterceptor,
+  uninstallAuthInterceptor,
+  refreshOnce,
+} from '../services/api/authInterceptor';
 import {
   registerForPushNotifications,
   savePushToken,
@@ -46,9 +50,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   /**
    * Exchange the stored refresh token for a fresh access token, rotating
-   * the refresh token as Supabase hands back a new one. A failure here
-   * means the refresh token itself is dead, so the session is cleared and
-   * the user lands back on sign-in - retrying wouldn't help.
+   * the refresh token as Supabase hands back a new one.
+   *
+   * Only a refusal from Supabase ends the session. Any other failure -
+   * typically no network for a moment after the phone unlocks - keeps it
+   * and returns null; the next foreground, timer tick, or 401 tries again.
+   *
+   * Never call this directly: go through refreshOnce(), so overlapping
+   * triggers share one refresh instead of consuming each other's token.
    */
   const renewAccessToken = useCallback(async (): Promise<string | null> => {
     const currentRefreshToken = refreshTokenRef.current;
@@ -72,6 +81,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return currentUser;
       });
       return refreshed.accessToken;
+    } else if (!refreshed.rejected) {
+      console.warn('renewAccessToken: refresh failed, keeping session to retry', refreshed.error);
+      return null;
     } else {
       console.warn('renewAccessToken: refresh token rejected, signing out');
       refreshTokenRef.current = null;
@@ -92,7 +104,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const restoreSession = async () => {
-      const stored = await loadSession();
+      let stored;
+      try {
+        stored = await loadSession();
+      } catch (error) {
+        // The Keychain refused the read - typically a session saved before
+        // the accessibility change in sessionService, read while locked.
+        // Show sign-in for now but leave the stored session alone: it's
+        // intact, and the next launch can read it.
+        console.warn('restoreSession: could not read stored session', error);
+        setIsLoading(false);
+        return;
+      }
 
       if (!stored) {
         setIsLoading(false);
@@ -103,6 +126,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // token's expiry - simpler than decoding the JWT client-side, and
       // confirms the refresh token itself is still valid.
       const refreshed = await refreshSession(stored.refreshToken);
+
+      if (!refreshed.accessToken && !refreshed.rejected) {
+        // Launched without a connection. Restore the stored session as
+        // is: the access token may have expired, but the first request to
+        // need a new one will refresh it, rather than the user being sent
+        // to sign in by a phone that's merely offline.
+        refreshTokenRef.current = stored.refreshToken;
+        setUser(stored.user);
+        setAccessToken(stored.accessToken);
+        setIsLoading(false);
+        return;
+      }
 
       if (refreshed.accessToken && refreshed.refreshToken) {
         refreshTokenRef.current = refreshed.refreshToken;
@@ -154,11 +189,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return;
     }
 
-    const interval = setInterval(renewAccessToken, REFRESH_INTERVAL_MS);
+    const interval = setInterval(refreshOnce, REFRESH_INTERVAL_MS);
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        renewAccessToken();
+        refreshOnce();
       }
     });
 
@@ -166,7 +201,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearInterval(interval);
       subscription.remove();
     };
-  }, [accessToken, renewAccessToken]);
+  }, [accessToken]);
 
   const login = async (nextUser: User, nextAccessToken: string, nextRefreshToken: string) => {
     refreshTokenRef.current = nextRefreshToken;
