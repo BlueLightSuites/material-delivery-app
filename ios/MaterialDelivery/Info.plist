@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Material Delivery uses your camera to photograph your driver's license, vehicle registration, and insurance for verification.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Material Delivery doesn't record audio. This is only shown because the camera it uses for document and delivery photos can also record video.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Material Delivery uses your photo library so you can upload your driver's license, vehicle registration, and insurance for verification.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

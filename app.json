@@ -28,6 +28,7 @@
       "bundleIdentifier": "com.bluelightsuites.materialdelivery",
       "infoPlist": {
         "NSCameraUsageDescription": "Material Delivery uses your camera to photograph your driver's license, vehicle registration, and insurance for verification.",
+        "NSMicrophoneUsageDescription": "Material Delivery doesn't record audio. This is only shown because the camera it uses for document and delivery photos can also record video.",
         "NSPhotoLibraryUsageDescription": "Material Delivery uses your photo library so you can upload your driver's license, vehicle registration, and insurance for verification.",
         "NSLocationWhenInUseUsageDescription": "Material Delivery uses your location to show delivery jobs near you and to share your position with the contractor while you're delivering their materials."
       }
