@@ -131,6 +131,8 @@ export interface RefreshResponse {
   accessToken: string | null;
   refreshToken: string | null;
   error: string | null;
+  /** When the new access token expires, in epoch milliseconds. */
+  expiresAt: number | null;
   /**
    * True only when Supabase answered and refused the refresh token -
    * expired, revoked, or already used. That's the one failure that means
@@ -364,6 +366,7 @@ export async function refreshSession(refreshToken: string): Promise<RefreshRespo
     return {
       accessToken: response.data.access_token || null,
       refreshToken: response.data.refresh_token || null,
+      expiresAt: response.data.expires_at ? response.data.expires_at * 1000 : null,
       error: null,
       rejected: false,
     };
@@ -381,7 +384,7 @@ export async function refreshSession(refreshToken: string): Promise<RefreshRespo
       rejected = status === 400 || status === 401;
     }
 
-    return { accessToken: null, refreshToken: null, error: errorMessage, rejected };
+    return { accessToken: null, refreshToken: null, expiresAt: null, error: errorMessage, rejected };
   }
 }
 

@@ -1,7 +1,12 @@
 import React, { createContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { User } from '../models/User';
-import { loadSession, saveSession, clearSession } from '../services/auth/sessionService';
+import {
+  loadSession,
+  saveSession,
+  clearSession,
+  migrateSessionAccessibility,
+} from '../services/auth/sessionService';
 import { refreshSession } from '../services/firebase/authService';
 import {
   installAuthInterceptor,
@@ -14,9 +19,17 @@ import {
   clearPushToken,
 } from '../services/notifications';
 
-// Supabase access tokens last an hour. Renew comfortably inside that so a
-// long-lived screen doesn't start 401ing mid-session.
-const REFRESH_INTERVAL_MS = 45 * 60 * 1000;
+// Supabase access tokens last an hour. The app renews once one is within
+// this margin of expiring - checked on a timer and on every return to the
+// foreground - rather than on every foreground regardless.
+//
+// Renewing on every unlock rotated the refresh token several times a
+// minute, and each rotation is a moment where the app holds a new token
+// it hasn't saved yet. Lose that save (iOS suspending or ending the app
+// right after an unlock) and the next launch presents an already-used
+// token, which Supabase refuses - a sign-out.
+const RENEW_MARGIN_MS = 10 * 60 * 1000;
+const RENEW_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 interface AuthContextType {
   user: User | null;
@@ -47,6 +60,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // rotation re-rendering the whole app (and re-running the effects that
   // schedule the next renewal) would be needless churn.
   const refreshTokenRef = useRef<string | null>(null);
+  // Null means unknown (just signed in, or restored offline), which is
+  // treated as due for renewal.
+  const expiresAtRef = useRef<number | null>(null);
+  // Mirrors `user` for renewAccessToken, which has to save the session
+  // without waiting for a render to read state.
+  const userRef = useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   /**
    * Exchange the stored refresh token for a fresh access token, rotating
@@ -69,17 +91,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     if (refreshed.accessToken && refreshed.refreshToken) {
       refreshTokenRef.current = refreshed.refreshToken;
-      setAccessToken(refreshed.accessToken);
-      setUser((currentUser) => {
-        if (currentUser) {
-          saveSession({
+      expiresAtRef.current = refreshed.expiresAt;
+      // Saved before anything else happens, and awaited. Supabase has
+      // already retired the old refresh token, so until this lands the
+      // only copy of the new one is in memory - which iOS can discard at
+      // any moment once the app is backgrounded. (It used to be saved
+      // inside a state update, which doesn't run until the next render:
+      // unlock, renew, lock again, and it never ran at all.)
+      const currentUser = userRef.current;
+      if (currentUser) {
+        try {
+          await saveSession({
             user: currentUser,
-            accessToken: refreshed.accessToken as string,
-            refreshToken: refreshed.refreshToken as string,
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken,
           });
+        } catch (error) {
+          console.error('renewAccessToken: could not save renewed session', error);
         }
-        return currentUser;
-      });
+      }
+      setAccessToken(refreshed.accessToken);
       return refreshed.accessToken;
     } else if (!refreshed.rejected) {
       console.warn('renewAccessToken: refresh failed, keeping session to retry', refreshed.error);
@@ -87,10 +118,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } else {
       console.warn('renewAccessToken: refresh token rejected, signing out');
       refreshTokenRef.current = null;
+      expiresAtRef.current = null;
       setUser(null);
       setAccessToken(null);
       await clearSession();
       return null;
+    }
+  }, []);
+
+  /** Renew if the access token is unknown or close to expiring. */
+  const renewIfDue = useCallback(() => {
+    const expiresAt = expiresAtRef.current;
+    if (expiresAt === null || expiresAt - Date.now() < RENEW_MARGIN_MS) {
+      refreshOnce();
     }
   }, []);
 
@@ -122,6 +162,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
+      // Now, while the Keychain is known to be readable - see
+      // migrateSessionAccessibility for why not on the save path.
+      try {
+        await migrateSessionAccessibility(stored);
+      } catch (error) {
+        console.warn('restoreSession: keychain accessibility migration failed', error);
+      }
+
       // Always refresh on launch rather than trusting the stored access
       // token's expiry - simpler than decoding the JWT client-side, and
       // confirms the refresh token itself is still valid.
@@ -141,13 +189,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (refreshed.accessToken && refreshed.refreshToken) {
         refreshTokenRef.current = refreshed.refreshToken;
-        setUser(stored.user);
-        setAccessToken(refreshed.accessToken);
+        expiresAtRef.current = refreshed.expiresAt;
+        // Saved before the app proceeds, same as renewAccessToken: the
+        // stored token was just retired.
         await saveSession({
           user: stored.user,
           accessToken: refreshed.accessToken,
           refreshToken: refreshed.refreshToken,
         });
+        setUser(stored.user);
+        setAccessToken(refreshed.accessToken);
       } else {
         // Refresh token is invalid or expired - fall back to sign-in.
         await clearSession();
@@ -189,11 +240,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return;
     }
 
-    const interval = setInterval(refreshOnce, REFRESH_INTERVAL_MS);
+    const interval = setInterval(renewIfDue, RENEW_CHECK_INTERVAL_MS);
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        refreshOnce();
+        renewIfDue();
       }
     });
 
@@ -201,10 +252,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearInterval(interval);
       subscription.remove();
     };
-  }, [accessToken]);
+  }, [accessToken, renewIfDue]);
 
   const login = async (nextUser: User, nextAccessToken: string, nextRefreshToken: string) => {
     refreshTokenRef.current = nextRefreshToken;
+    // Unknown until the first renewal reports it; renewIfDue treats that
+    // as due, so the first foreground after sign-in renews once and from
+    // then on only near expiry.
+    expiresAtRef.current = null;
     setUser(nextUser);
     setAccessToken(nextAccessToken);
     await saveSession({
