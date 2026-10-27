@@ -160,6 +160,8 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your full name"
+                  textContentType="name"
+                  autoComplete="name"
                   placeholderTextColor="#999"
                   value={name}
                   onChangeText={(text) => {
@@ -186,6 +188,10 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
                     if (errors.email) setErrors({ ...errors, email: undefined });
                   }}
                   keyboardType="email-address"
+                  // Labelled for iOS Password AutoFill - see SignIn.tsx.
+                  textContentType="username"
+                  autoComplete="email"
+                  autoCorrect={false}
                   autoCapitalize="none"
                   editable={!loading}
                 />
@@ -245,6 +251,8 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
                     if (errors.password) setErrors({ ...errors, password: undefined });
                   }}
                   secureTextEntry={!showPassword}
+                  textContentType="newPassword"
+                  autoComplete="password-new"
                   editable={!loading}
                 />
                 <TouchableOpacity
@@ -272,6 +280,8 @@ const SignUp: React.FC<SignUpProps> = ({ navigation }) => {
                       setErrors({ ...errors, confirmPassword: undefined });
                   }}
                   secureTextEntry={!showConfirmPassword}
+                  textContentType="newPassword"
+                  autoComplete="password-new"
                   editable={!loading}
                 />
                 <TouchableOpacity

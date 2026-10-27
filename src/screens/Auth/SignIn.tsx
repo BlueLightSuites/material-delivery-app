@@ -154,6 +154,13 @@ const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                     }
                   }}
                   keyboardType="email-address"
+                  // Labelled for iOS Password AutoFill. Without these, iOS guesses
+                  // which fields form a login - and re-guesses on every keystroke,
+                  // because each one re-sends the field's value - so the passwords bar
+                  // flickered with every letter.
+                  textContentType="username"
+                  autoComplete="email"
+                  autoCorrect={false}
                   autoCapitalize="none"
                   editable={!loading}
                   accessibilityLabel="Email input field"
@@ -185,6 +192,8 @@ const SignIn: React.FC<SignInProps> = ({ navigation }) => {
                     }
                   }}
                   secureTextEntry={!showPassword}
+                  textContentType="password"
+                  autoComplete="password"
                   editable={!loading}
                   accessibilityLabel="Password input field"
                 />

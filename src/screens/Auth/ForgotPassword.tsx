@@ -125,6 +125,10 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ navigation }) => {
                       }
                     }}
                     keyboardType="email-address"
+                    // Labelled for iOS Password AutoFill - see SignIn.tsx.
+                    textContentType="username"
+                    autoComplete="email"
+                    autoCorrect={false}
                     autoCapitalize="none"
                     editable={!loading}
                     autoFocus
