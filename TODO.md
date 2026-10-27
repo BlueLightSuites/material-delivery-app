@@ -1,10 +1,10 @@
 # Roadmap to a usable Uber-like delivery platform
 
-**Last updated:** 2026-09-28
+**Last updated:** 2026-10-26
 Every item below is tracked as a GitHub issue in [BlueLightSuites/material-delivery-app](https://github.com/BlueLightSuites/material-delivery-app/issues), labeled `phase-1`/`phase-2`/`phase-3`. Issue numbers are linked inline.
 See [STATUS.md](./STATUS.md) first — it's the verified inventory of what's actually built. This file is the plan for what's left, ordered by what's actually blocking a working product.
 
-The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. That loop now works end to end against the live database, including live driver position on a map and an ETA, a contractor can edit or cancel a request, and both sides rate each other. What's missing is payment and verified push notifications.
+The end goal: a contractor posts a delivery request, a driver sees it nearby and accepts it, both sides track it live, the delivery completes, and payment settles. That loop now works end to end against the live database, including live driver position on a map and an ETA, a contractor can edit or cancel a request, both sides rate each other, and only verified drivers can accept jobs. What's missing is payment and verified push notifications.
 
 Phases are ordered by dependency, not by size — Phase 1 is the whole reason this is a two-sided marketplace and not just a form. Don't start Phase 2 or 3 work before Phase 1 closes the loop.
 
@@ -117,6 +117,15 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 - **Telling the driver:** push plus, more reliably, a notice that persists in their jobs list until acknowledged (`driver_ack_cancelled_at`, `20260915120000`). Push alone can't reach a simulator, a driver who declined notifications, or an offline phone.
 - **Open question on [#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10):** the driver is told their trip was called off but nothing about whether they're paid for the drive. Needs a compensation policy.
 
+### Driver vehicle and documents ([#22](https://github.com/BlueLightSuites/material-delivery-app/issues/22))
+
+- **Status:** Done
+- **Driver side:** `src/screens/Driver/Verification.tsx`, reachable from Profile and from a banner on the jobs feed. Vehicle type, trailer, and trailer capacity; photos of license, registration, and insurance via `expo-image-picker`, uploaded to a private `driver-documents` bucket. Status per document (in review, approved with expiry, rejected with reason), updated live over Realtime.
+- **Gate:** `accept_delivery_request` refuses unverified drivers and trailer jobs for drivers without a trailer (`20261019000000`). The client gets a typed outcome, so a refusal or a network error no longer reads as "another driver took it."
+- **Review:** Slack alert per upload, never the file (`20261022000000`); admins approve or reject in the app (`src/screens/Admin/`, `20261023000000`). Approval requires the document's expiry date, and an expired document stops counting on its own. Rejection requires a reason the driver sees. Decisions record the reviewer.
+- **Security fixes included:** column grants on `users` (a user could set their own `rating_avg`); `accept_delivery_request` now checks the role (a contractor could accept jobs); admin can no longer be chosen at signup; blank names are rejected (`20261023180000`).
+- **Not included:** identity verification, which comes with Stripe Connect onboarding ([#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10)); background or driving-record checks (e.g. Checkr) — a business decision; reminders before a document expires; PDF uploads (photos only).
+
 ### Map view for live tracking ([#41](https://github.com/BlueLightSuites/material-delivery-app/issues/41))
 
 - **Status:** Done
@@ -150,4 +159,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 Two things that walk exposed, both now fixed, both worth remembering as a pattern: accepting a job removed it from the only list that could reach it, and `User.id` meant the auth UUID on some sign-in paths and the `users` table's bigint key on others. Neither showed up in code review or type-checking — the first because every piece worked in isolation, the second because a `userData as User` cast asserted away the mismatch. Walking the actual user path found both.
 
-Phase 2 is down to two items. **[#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9) (push)** needs one EAS device build to verify — which will also surface how much of the SDK-age problem ([#42](https://github.com/BlueLightSuites/material-delivery-app/issues/42)) bites on real hardware. **[#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10) (payments)** is designed but blocked on business decisions (pricing constants, cancellation compensation, liability, terms), which can be settled in parallel.
+Phase 2 is down to two items. **[#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9) (push)** is next: more now depends on it than when it was written — contractors hear about assignment and delivery, drivers about cancellations and every document decision — and none of it has reached a real phone. One EAS device build verifies it, and will also show how much the SDK-age problem ([#42](https://github.com/BlueLightSuites/material-delivery-app/issues/42)) bites on real hardware; better to learn that before building payments on top. **[#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10) (payments)** is designed but blocked on business decisions (pricing constants, cancellation compensation, liability, terms), which can be settled in parallel.
