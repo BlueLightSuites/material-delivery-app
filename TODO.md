@@ -89,7 +89,9 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 ### 9. Push notifications ([#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9))
 
-- Add `expo-notifications`. Minimum set: contractor notified on "driver assigned" and "delivered"; driver notified on "new job nearby" (once geofencing/radius filtering exists).
+- **Status:** Done — verified on a physical iPhone (2026-10-27). Database triggers send through Expo's push service: contractor on assigned and delivered, driver on cancellation and document decisions.
+- The first device build also surfaced three sign-out bugs on lock/unlock, now fixed (see STATUS.md). SDK 48 ran on the device without trouble, which lowers the urgency of [#42](https://github.com/BlueLightSuites/material-delivery-app/issues/42) — it still blocks Xcode upgrades.
+- **Not included:** "new job nearby" for drivers, which needs radius matching first.
 
 ### 10. Payments ([#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10))
 
@@ -159,4 +161,4 @@ Nothing here matters until Phase 1's loop works, but all of it is required befor
 
 Two things that walk exposed, both now fixed, both worth remembering as a pattern: accepting a job removed it from the only list that could reach it, and `User.id` meant the auth UUID on some sign-in paths and the `users` table's bigint key on others. Neither showed up in code review or type-checking — the first because every piece worked in isolation, the second because a `userData as User` cast asserted away the mismatch. Walking the actual user path found both.
 
-Phase 2 is down to two items. **[#9](https://github.com/BlueLightSuites/material-delivery-app/issues/9) (push)** is next: more now depends on it than when it was written — contractors hear about assignment and delivery, drivers about cancellations and every document decision — and none of it has reached a real phone. One EAS device build verifies it, and will also show how much the SDK-age problem ([#42](https://github.com/BlueLightSuites/material-delivery-app/issues/42)) bites on real hardware; better to learn that before building payments on top. **[#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10) (payments)** is designed but blocked on business decisions (pricing constants, cancellation compensation, liability, terms), which can be settled in parallel.
+Phase 2 is down to payments ([#10](https://github.com/BlueLightSuites/material-delivery-app/issues/10)), designed but blocked on business decisions: pricing constants, cancellation compensation, liability, terms. Decide first whether multiple materials per request ([#39](https://github.com/BlueLightSuites/material-delivery-app/issues/39)) is in the MVP: pricing is weight-based, so the materials model has to settle before pricing is built on it — including how cubic yards, a volume, count toward a weight.
